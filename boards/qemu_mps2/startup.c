@@ -56,6 +56,6 @@ void Reset_Handler(void) {
 }
 
 void Default_Handler(void) {
-    log("unexpected exception/interrupt\n");
+    qemu_log("unexpected exception/interrupt\n");
     exit_qemu(94);
 }

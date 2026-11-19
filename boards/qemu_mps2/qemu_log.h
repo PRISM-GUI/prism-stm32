@@ -1,8 +1,8 @@
-/* Semihosting-based logging/exit for the QEMU firmware (tests/qemu). */
+/* Semihosting-based logging/exit for the QEMU firmware (boards/qemu_mps2). */
 #ifndef QEMU_LOG_H
 #define QEMU_LOG_H
 
-void log(const char *s);
+void qemu_log(const char *s);
 void exit_qemu(int code) __attribute__((noreturn));
 
 #endif /* QEMU_LOG_H */

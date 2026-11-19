@@ -39,14 +39,16 @@ executable('spike.elf', 'spike/main.cpp',
   dependencies : deps,
 )
 
-# ---- FreeRTOS + posix/ layer + QEMU test firmware (mps2-an500, Cortex-M7) ----
-# The kernel is built for QEMU's MPS2-AN500 board; FreeRTOSConfig.h lives with
-# the firmware in tests/qemu/ (a different board gets its own config dir).
+# ---- QEMU board support (mps2-an500) + FreeRTOS + posix/ layer + test firmwares ----
+# The board support (startup, semihosting, hooks, FreeRTOSConfig.h, linker script) lives in
+# boards/qemu_mps2/ and is shared by every firmware for that board; a different board gets its
+# own directory (and its own FreeRTOSConfig.h).
+qemu_board_dir = 'boards' / 'qemu_mps2'
 freertos_root = 'third_party/FreeRTOS-Kernel'
 freertos_inc = include_directories(
   freertos_root / 'include',
   freertos_root / 'portable' / 'GCC' / 'ARM_CM7' / 'r0p1',
-  'tests' / 'qemu',
+  qemu_board_dir,
 )
 
 freertos = static_library('freertos', files(
@@ -61,12 +63,23 @@ freertos = static_library('freertos', files(
   include_directories : freertos_inc,
 )
 
+# The board's own objects: vectors/Reset_Handler, semihosting log/_write/exit, the FreeRTOS
+# hooks. Linked whole into each firmware (see the comment at the executables below).
+qemu_board = static_library('qemu_board', files(
+    qemu_board_dir / 'startup.c',
+    qemu_board_dir / 'semihost.c',
+    qemu_board_dir / 'freertos_hooks.c',
+  ),
+  include_directories : freertos_inc,
+)
+
 posix = static_library('posix', files(
     'posix' / 'freertos_posix.c',
     'posix' / 'posix_mutex.c',
     'posix' / 'posix_cond.c',
     'posix' / 'posix_rwlock.c',
     'posix' / 'posix_time.c',
+    'posix' / 'newlib_locks.c',
     'posix' / 'tls.c',
     'posix' / 'tls_support.S',
   ),
@@ -74,20 +87,29 @@ posix = static_library('posix', files(
 )
 
 # --specs=nosys.specs and -Wl,--gc-sections come from cross/stm32h7.ini (the
-# driver refuses nosys.specs twice). The posix objects are linked whole (gthr-posix references the pthread_* functions
-# weakly, so a plain archive would never be pulled in) and therefore land on
-# the link line before the -lnosys that nosys.specs appends at the end.
-qemu_tests = executable('qemu_tests.elf', files(
-    'tests' / 'qemu' / 'startup.c',
-    'tests' / 'qemu' / 'semihost.c',
-    'tests' / 'qemu' / 'freertos_hooks.c',
-    'tests' / 'qemu' / 'main.cpp',
-  ),
+# driver refuses nosys.specs twice). The posix and board objects are linked whole
+# (gthr-posix references the pthread_* functions weakly, so a plain archive would
+# never be pulled in; and newlib's retarget locks in posix/newlib_locks.c must be
+# defined before libc.a is scanned, or the linker would extract the no-op
+# libc_a-lock.o instead) and therefore land on the link line before the -lnosys
+# that nosys.specs appends at the end.
+qemu_ld = meson.current_source_dir() / qemu_board_dir / 'mps2_an500.ld'
+
+posix_tests = executable('posix_tests.elf', files('tests' / 'posix_qemu' / 'main.cpp'),
   include_directories : freertos_inc,
-  link_whole : posix,
-  link_depends : files('tests' / 'qemu' / 'mps2_an500.ld'),
+  link_whole : [posix, qemu_board],
+  link_depends : files(qemu_board_dir / 'mps2_an500.ld'),
   link_with : freertos,
-  link_args : [
-    '-T', meson.current_source_dir() / 'tests' / 'qemu' / 'mps2_an500.ld',
-  ],
+  link_args : ['-T', qemu_ld],
+)
+
+# PRISM's core (prism_core) as a firmware: a model, a WidgetTree, snapshots —
+# same board support, posix layer and linker script as the posix tests.
+prism_tests = executable('prism_tests.elf', files('tests' / 'prism_qemu' / 'main.cpp'),
+  include_directories : [prism_inc, freertos_inc],
+  dependencies : deps,
+  link_with : [prism_core, freertos],
+  link_whole : [posix, qemu_board],
+  link_depends : files(qemu_board_dir / 'mps2_an500.ld'),
+  link_args : ['-T', qemu_ld],
 )

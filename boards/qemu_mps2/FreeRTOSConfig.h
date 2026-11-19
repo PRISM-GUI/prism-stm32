@@ -1,9 +1,9 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
-/* FreeRTOS config for the QEMU mps2-an500 firmware (Cortex-M7). QEMU models the
+/* FreeRTOS config for the QEMU mps2-an500 board (Cortex-M7). QEMU models the
    MPS2 CPU clock at 25 MHz and SysTick is clocked from it. This file lives with
-   the firmware in tests/qemu/ — another board gets its own config. */
+   the board support in boards/qemu_mps2/ — another board gets its own config. */
 
 #define configUSE_PREEMPTION                    1
 #define configUSE_TIME_SLICING                  1
@@ -49,6 +49,17 @@
 #define configUSE_TRACE_FACILITY                0
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
 #define configGENERATE_RUN_TIME_STATS           0
+
+/* newlib thread safety: each task's TCB embeds a struct _reent (the kernel's
+   xTLSBlock, via include/newlib-freertos.h) and vTaskSwitchContext points
+   newlib's _impure_ptr at the running task's copy, so printf & co. from any
+   task use per-task state. The locks around newlib's shared objects (malloc,
+   stdio, env, ...) are ours: posix/newlib_locks.c defines every
+   __retarget_lock_* function and every __lock___* object, so newlib's own
+   no-op libc_a-lock.o is never pulled in. In this kernel version the reent is
+   embedded in the TCB (no configNEWLIB_REENTRANT_IS_DYNAMIC / separate
+   allocation: that was the V10-era xNewLib_reent mechanism). */
+#define configUSE_NEWLIB_REENTRANT              1
 
 /* Raw NVIC priority register values. 0x50 is valid whether the hardware
    implements 4 or 8 priority bits (bit 0 must stay clear); PendSV/SysTick are

@@ -21,7 +21,9 @@
 #include "semphr.h"
 
 #ifndef POSIX_DEFAULT_STACK_BYTES
-#define POSIX_DEFAULT_STACK_BYTES (16 * 1024) /* default pthread stack, in bytes */
+/* Default pthread stack, in bytes. 32 KiB, not 16: a worker thread that builds PRISM
+   snapshots (tests/prism_qemu) needs the headroom. */
+#define POSIX_DEFAULT_STACK_BYTES (32 * 1024)
 #endif
 
 #define POSIX_MAX_KEYS 16

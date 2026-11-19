@@ -1,10 +1,15 @@
 // QEMU firmware tests for the posix/ layer on FreeRTOS (mps2-an500, Cortex-M7).
 // One FreeRTOS task with a big stack runs the tests, a watchdog task exits with
 // code 99 after 20 s, and the exit code is the number of failed tests.
+// Output goes through printf (newlib stdio: per-task reent via
+// configUSE_NEWLIB_REENTRANT, locks from posix/newlib_locks.c, _write to
+// semihosting); the semihosting qemu_log() is kept for the banner and the watchdog.
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -23,9 +28,7 @@ using namespace std::chrono_literals;
 static int failures = 0;
 
 static void check(const char *name, bool ok) {
-    char line[96];
-    std::snprintf(line, sizeof line, "%-40s %s\n", name, ok ? "PASS" : "FAIL");
-    log(line);   // semihosting directly: printf through newlib's stdio prints nothing yet
+    std::printf("%-48s %s\n", name, ok ? "PASS" : "FAIL");
     if (!ok) ++failures;
 }
 
@@ -189,9 +192,7 @@ static void test_detached_thread_frees() {
     while (!done.load()) std::this_thread::sleep_for(1ms);
     vTaskDelay(pdMS_TO_TICKS(200)); // the idle task frees the deleted task's stack
     long lost = (long)before - (long)xPortGetFreeHeapSize();
-    char line[64];
-    std::snprintf(line, sizeof line, "  heap lost: %ld bytes\n", lost);
-    log(line);
+    std::printf("  heap lost: %ld bytes\n", lost);
     check("9 detached thread frees its block (<=64B)", lost <= 64);
 }
 
@@ -221,9 +222,60 @@ static void test_shared_mutex() {
     check("10 shared_mutex: 2 readers, writer waits", writer_blocked && writer_got.load());
 }
 
+// 11. newlib's malloc under threads: 4 threads each doing 2000 malloc/free of
+//     random sizes in 16..512 bytes, a pattern written into each block and
+//     checked byte for byte before free. newlib serializes malloc with
+//     __lock___malloc_recursive_mutex (posix/newlib_locks.c), so no corruption.
+static void test_malloc_stress() {
+    constexpr int kThreads = 4, kIters = 2000;
+    std::atomic<int> bad{0};
+    std::thread ts[kThreads];
+    for (int i = 0; i < kThreads; i++)
+        ts[i] = std::thread([&bad, i] {
+            unsigned rng = 0x9e3779b9u * static_cast<unsigned>(i + 1); // per-thread seed, deterministic
+            for (int j = 0; j < kIters; j++) {
+                rng = rng * 1664525u + 1013904223u;
+                size_t size = 16 + (rng >> 16) % (512 - 16 + 1); // 16..512 bytes
+                auto *p = static_cast<unsigned char *>(std::malloc(size));
+                if (!p) {
+                    bad.fetch_add(1);
+                    continue;
+                }
+                unsigned char pattern = static_cast<unsigned char>(i * 61 + j);
+                std::memset(p, pattern, size);
+                for (size_t k = 0; k < size; k++)
+                    if (p[k] != pattern) {
+                        bad.fetch_add(1);
+                        break;
+                    }
+                std::free(p);
+            }
+        });
+    for (auto &t : ts) t.join();
+    check("11 4x2000 malloc/free 16..512B, patterns intact", bad.load() == 0);
+}
+
+// 12. printf from two threads at once: 50 short lines each. Whole lines are
+//     what the host should read on QEMU's stdout (each printf is one locked
+//     vfprintf); the check here is that both threads got all their lines out
+//     without crashing, garbling the stdio state, or deadlocking.
+static void test_printf_two_threads() {
+    constexpr int kThreads = 2, kLines = 50;
+    std::atomic<int> done{0};
+    std::thread ts[kThreads];
+    for (int i = 0; i < kThreads; i++)
+        ts[i] = std::thread([&done, i] {
+            for (int j = 0; j < kLines; j++)
+                std::printf("thread %d line %02d: the quick brown fox jumps\n", i, j);
+            done.fetch_add(1);
+        });
+    for (auto &t : ts) t.join();
+    check("12 printf from 2 threads x50 lines, all out", done.load() == kThreads);
+}
+
 static void test_task(void *) {
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
-    log("posix-on-FreeRTOS tests (mps2-an500)\n");
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // one _write per printf: whole lines, no buffering races
+    qemu_log("posix-on-FreeRTOS tests (mps2-an500)\n");
     test_thread_join();
     test_mutex_counter();
     test_condvar_pingpong();
@@ -234,15 +286,15 @@ static void test_task(void *) {
     test_recursive_and_timed_mutex();
     test_detached_thread_frees();
     test_shared_mutex();
-    char line[32];
-    std::snprintf(line, sizeof line, "failures: %d\n", failures);
-    log(line);
+    test_malloc_stress();
+    test_printf_two_threads();
+    std::printf("failures: %d\n", failures);
     exit_qemu(failures); // exit code = number of failures
 }
 
 static void watchdog_task(void *) {
     vTaskDelay(pdMS_TO_TICKS(20000));
-    log("WATCHDOG: tests did not finish in 20 s\n");
+    qemu_log("WATCHDOG: tests did not finish in 20 s\n");
     exit_qemu(99);
 }
 

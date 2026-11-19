@@ -19,7 +19,7 @@ static int semihost(int op, void *arg) {
     return r0;
 }
 
-void log(const char *s) { (void)semihost(SYS_WRITE0, (void *)s); }
+void qemu_log(const char *s) { (void)semihost(SYS_WRITE0, (void *)s); }
 
 void exit_qemu(int code) {
     /* SYS_EXIT_EXTENDED takes a block {reason, subcode}; ADP_Stopped_ApplicationExit = 0x20026. */
@@ -28,14 +28,20 @@ void exit_qemu(int code) {
     for (;;) { } /* noreturn */
 }
 
-/* newlib's stdio calls _write_r -> _write. libnosys.a provides a failing _write,
-   but this strong definition sits in an object linked before libnosys, so it
-   wins. SYS_WRITE takes a 3-word block {fd, buf, len} and returns the number of
-   bytes NOT written. */
+/* newlib's stdio calls _write_r -> _write. libnosys.a provides a failing _write, but this
+   strong definition sits in an object linked before libnosys, so it wins. QEMU does not
+   pre-open semihosting handles for fds 1/2, so SYS_WRITE on them goes nowhere: the bytes go
+   to the console with SYS_WRITE0, in NUL-terminated chunks. */
 int _write(int fd, const void *buf, size_t len) {
     if (fd != 1 && fd != 2) return -1;
-    unsigned long block[3] = { (unsigned long)fd, (unsigned long)buf, (unsigned long)len };
-    int not_written = semihost(SYS_WRITE, block);
-    if (not_written < 0) not_written = 0;
-    return (int)(len - (size_t)not_written);
+    const char *p = buf;
+    char chunk[65];
+    for (size_t done = 0; done < len;) {
+        size_t n = len - done < 64 ? len - done : 64;
+        for (size_t i = 0; i < n; ++i) chunk[i] = p[done + i] ? p[done + i] : ' ';
+        chunk[n] = '\0';
+        (void)semihost(SYS_WRITE0, chunk);
+        done += n;
+    }
+    return (int)len;
 }
