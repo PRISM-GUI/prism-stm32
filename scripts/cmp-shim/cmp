@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+# A stand-in for cmp(1) (diffutils is not in the Coder image): exit 0 when the two files are
+# byte-identical, 1 when they differ, 2 on error. Options other than the two paths are ignored;
+# GCC's build only asks whether two files match.
+import sys
+paths = [a for a in sys.argv[1:] if not a.startswith("-")]
+try:
+    with open(paths[0], "rb") as a, open(paths[1], "rb") as b:
+        sys.exit(0 if a.read() == b.read() else 1)
+except (OSError, IndexError):
+    sys.exit(2)
