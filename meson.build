@@ -4,7 +4,7 @@
 # that sit under subprojects/ from the parent project).
 # simplify: the source list is copied from PRISM's src/meson.build; replace with
 # subproject('prism') (subprojects/prism.wrap) once PRISM has an option to build without SDL.
-project('prism-stm32', 'cpp',
+project('prism-stm32', 'c', 'cpp',
   version : '0.0.1',
   default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=s', 'b_staticpic=false',
                      'libunibreak:werror=false', 'libunibreak:warning_level=0'],
@@ -37,4 +37,57 @@ executable('spike.elf', 'spike/main.cpp',
   include_directories : prism_inc,
   link_with : prism_core,
   dependencies : deps,
+)
+
+# ---- FreeRTOS + posix/ layer + QEMU test firmware (mps2-an500, Cortex-M7) ----
+# The kernel is built for QEMU's MPS2-AN500 board; FreeRTOSConfig.h lives with
+# the firmware in tests/qemu/ (a different board gets its own config dir).
+freertos_root = 'third_party/FreeRTOS-Kernel'
+freertos_inc = include_directories(
+  freertos_root / 'include',
+  freertos_root / 'portable' / 'GCC' / 'ARM_CM7' / 'r0p1',
+  'tests' / 'qemu',
+)
+
+freertos = static_library('freertos', files(
+    freertos_root / 'tasks.c',
+    freertos_root / 'queue.c',
+    freertos_root / 'list.c',
+    freertos_root / 'timers.c',
+    freertos_root / 'event_groups.c',
+    freertos_root / 'portable' / 'GCC' / 'ARM_CM7' / 'r0p1' / 'port.c',
+    freertos_root / 'portable' / 'MemMang' / 'heap_4.c',
+  ),
+  include_directories : freertos_inc,
+)
+
+posix = static_library('posix', files(
+    'posix' / 'freertos_posix.c',
+    'posix' / 'posix_mutex.c',
+    'posix' / 'posix_cond.c',
+    'posix' / 'posix_rwlock.c',
+    'posix' / 'posix_time.c',
+    'posix' / 'tls.c',
+    'posix' / 'tls_support.S',
+  ),
+  include_directories : [freertos_inc, include_directories('posix')],
+)
+
+# --specs=nosys.specs and -Wl,--gc-sections come from cross/stm32h7.ini (the
+# driver refuses nosys.specs twice). The posix objects are linked whole (gthr-posix references the pthread_* functions
+# weakly, so a plain archive would never be pulled in) and therefore land on
+# the link line before the -lnosys that nosys.specs appends at the end.
+qemu_tests = executable('qemu_tests.elf', files(
+    'tests' / 'qemu' / 'startup.c',
+    'tests' / 'qemu' / 'semihost.c',
+    'tests' / 'qemu' / 'freertos_hooks.c',
+    'tests' / 'qemu' / 'main.cpp',
+  ),
+  include_directories : freertos_inc,
+  link_whole : posix,
+  link_depends : files('tests' / 'qemu' / 'mps2_an500.ld'),
+  link_with : freertos,
+  link_args : [
+    '-T', meson.current_source_dir() / 'tests' / 'qemu' / 'mps2_an500.ld',
+  ],
 )

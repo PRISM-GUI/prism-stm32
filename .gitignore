@@ -2,3 +2,4 @@ build*/
 subprojects/*/
 !subprojects/packagefiles/
 third_party/
+.vibe-out/
