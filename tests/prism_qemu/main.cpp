@@ -10,10 +10,16 @@
 #include <prism/core/field.hpp>
 #include <prism/render/scene_snapshot.hpp>
 
+#include "raster/canvas.hpp"
+#include "raster/draw_snapshot.hpp"
+#include "raster/fonts.hpp"
+
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -21,8 +27,6 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
-
-#include "fixed_measurer.hpp"
 
 extern "C" {
 #include "qemu_log.h"
@@ -80,8 +84,8 @@ void prism_test_task(void *) {
 
     DemoModel model;
     WidgetTree tree(model);
-    prism_qemu::FixedMeasurer measurer; // deterministic layout: 8 px/glyph, 16 px lines
-    tree.set_text_measurer(&measurer);
+    raster::Fonts fonts;   // the embedded TTFs, also the tree's measurer: layout and drawing agree
+    tree.set_text_measurer(&fonts);
 
     // 1-3. one snapshot of the model: geometry, draw commands, the label's text.
     uint64_t version = 0;
@@ -111,7 +115,37 @@ void prism_test_task(void *) {
     std::printf("  %d publishes: %.1f ms wall total, %.3f ms each (last build_time_ms %.3f)\n",
                 kSets, total_ms, total_ms / kSets, last ? last->build_time_ms : 0.0);
 
-    // 5. a second thread builds snapshots while this task changes nothing (it
+    // 5. rasterize that snapshot into an in-RAM 480x272 framebuffer (on the board the LTDC
+    //    framebuffer lives in SDRAM): a checksum of the pixels, and one full draw's time.
+    if (last) {
+        static std::array<std::uint32_t, 480 * 272> fb;   // 512 KiB of the 4 MiB SRAM
+        raster::Canvas canvas{fb, 480, 272, 480};
+        auto checksum = [](const std::array<std::uint32_t, 480 * 272>& px) {
+            std::uint64_t h = 1469598103934665603ull;   // FNV-1a 64 over the pixel bytes
+            for (std::uint32_t v : px)
+                for (int b = 0; b < 4; ++b) {
+                    h ^= (v >> (8 * b)) & 0xFFull;
+                    h *= 1099511628211ull;
+                }
+            return h;
+        };
+        canvas.clear(last->window.background);   // clear is the caller's job, as with SDL
+        auto d0 = std::chrono::steady_clock::now();
+        raster::draw(canvas, *last, fonts);
+        auto d1 = std::chrono::steady_clock::now();
+        double draw_ms = std::chrono::duration<double, std::milli>(d1 - d0).count();
+        std::uint64_t sum = checksum(fb);
+        std::set<std::uint32_t> colors(fb.begin(), fb.end());
+        canvas.clear(last->window.background);
+        raster::draw(canvas, *last, fonts);
+        check("rasterized framebuffer is deterministic", checksum(fb) == sum);
+        check("framebuffer is not one colour", colors.size() > 1);
+        std::printf("  one full draw of %zu commands: %.3f ms, checksum %016llx, %zu colours\n",
+                    command_count(*last), draw_ms, static_cast<unsigned long long>(sum),
+                    colors.size());
+    }
+
+    // 6. a second thread builds snapshots while this task changes nothing (it
     //    only churns malloc, under newlib's locked malloc) — two threads plus
     //    malloc under load.
     constexpr int kWorkerBuilds = 200;

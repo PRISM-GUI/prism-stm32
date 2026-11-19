@@ -1,0 +1,9 @@
+option('prism_dir', type : 'string', value : '',
+       description : 'Absolute path of a PRISM checkout')
+option('prism_sources', type : 'array',
+       value : ['core/shared_state.cpp', 'render/scene_snapshot.cpp', 'render/view_transform.cpp',
+                'ui/delegate.cpp', 'ui/layout.cpp', 'ui/node_family.cpp',
+                'app/backend.cpp', 'app/view_builder.cpp', 'app/widget_tree.cpp', 'app/model_app.cpp',
+                'delegates/form_delegates.cpp', 'delegates/text_delegates.cpp',
+                'text/document.cpp', 'text/layout.cpp', 'text/view.cpp', 'text/editor.cpp', 'text/highlight.cpp', 'text/complete.cpp', 'text/find.cpp', 'text/to_markdown.cpp'],
+       description : 'PRISM sources (under its src/), the same list as the root meson.build')

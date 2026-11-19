@@ -1,5 +1,7 @@
 build*/
 subprojects/*/
 !subprojects/packagefiles/
+host/subprojects/*/
+!host/subprojects/packagefiles/
 third_party/
 .vibe-out/

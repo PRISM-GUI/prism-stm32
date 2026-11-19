@@ -20,7 +20,7 @@ deps = [
   dependency('libunibreak', fallback : ['libunibreak', 'unibreak_dep'], default_options : ['default_library=static']),
   dependency('sheenbidi', fallback : ['sheenbidi', 'sheenbidi_dep'], default_options : ['default_library=static']),
   dependency('glaze', fallback : ['glaze', 'glaze_dep']),
-  dependency('magic_enum', fallback : ['magic_enum', 'magic_enum_dep']),
+  dependency('magic_enum', fallback : ['magic_enum', 'magic_enum_dep'], default_options : ['test=false']),
 ]
 
 prism_sources = []
@@ -33,9 +33,28 @@ prism_core = static_library('prism_core', prism_sources,
   dependencies : deps,
 )
 
-executable('spike.elf', 'spike/main.cpp',
-  include_directories : prism_inc,
-  link_with : prism_core,
+# ---- The software rasterizer for the board's framebuffer (raster/) ----
+# Plain C++ over a pixel span, no SDL: the same sources build for the host (host/) and the
+# Cortex-M7. The TTF fonts are compiled in: scripts/embed.py turns each assets/*.ttf into a .cpp
+# byte array (GCC 15 has #embed in C only, not in C++, so a Python custom_target emits them).
+python3 = find_program('python3')
+embedded_font_sources = [
+  custom_target('embedded_noto_sans_latin',
+    input : files('assets' / 'NotoSans-Latin.ttf'),
+    output : 'embedded_noto_sans_latin.cpp',
+    command : [python3, files('scripts' / 'embed.py'), '@INPUT@', '@OUTPUT@', 'noto_sans_latin'],
+  ),
+  custom_target('embedded_noto_sans_bold_latin',
+    input : files('assets' / 'NotoSans-Bold-Latin.ttf'),
+    output : 'embedded_noto_sans_bold_latin.cpp',
+    command : [python3, files('scripts' / 'embed.py'), '@INPUT@', '@OUTPUT@', 'noto_sans_bold_latin'],
+  ),
+]
+
+raster_lib = static_library('raster',
+  files('raster' / 'canvas.cpp', 'raster' / 'draw_snapshot.cpp', 'raster' / 'fonts.cpp'),
+  embedded_font_sources,
+  include_directories : [include_directories('.'), prism_inc],
   dependencies : deps,
 )
 
@@ -104,11 +123,13 @@ posix_tests = executable('posix_tests.elf', files('tests' / 'posix_qemu' / 'main
 )
 
 # PRISM's core (prism_core) as a firmware: a model, a WidgetTree, snapshots —
-# same board support, posix layer and linker script as the posix tests.
+# same board support, posix layer and linker script as the posix tests. Links the rasterizer too:
+# the firmware measures text with raster::Fonts and draws a snapshot into an in-RAM 480x272
+# framebuffer (see tests/prism_qemu/main.cpp).
 prism_tests = executable('prism_tests.elf', files('tests' / 'prism_qemu' / 'main.cpp'),
-  include_directories : [prism_inc, freertos_inc],
+  include_directories : [prism_inc, freertos_inc, include_directories('.')],
   dependencies : deps,
-  link_with : [prism_core, freertos],
+  link_with : [prism_core, raster_lib, freertos],
   link_whole : [posix, qemu_board],
   link_depends : files(qemu_board_dir / 'mps2_an500.ld'),
   link_args : ['-T', qemu_ld],
