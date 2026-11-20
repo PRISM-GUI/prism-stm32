@@ -4,6 +4,9 @@
 #include "display.hpp"   // Display::kWidth/kHeight: the panel is the LCD's 480x272
 #include "stm32h7b3i_discovery_ts.h"
 
+#include <chrono>
+#include <thread>
+
 bool Touch::init()
 {
     TS_Init_t ts_init = {};
@@ -11,7 +14,13 @@ bool Touch::init()
     ts_init.Height      = Display::kHeight;
     ts_init.Orientation = TS_SWAP_NONE;
     ts_init.Accuracy    = 2;
-    ready_ = BSP_TS_Init(0, &ts_init) == BSP_ERROR_NONE;
+    // The touch controller powers up with the LCD and does not answer I2C for a few hundred
+    // ms after it: retry for up to 2 s instead of giving up on the first probe.
+    for (int attempt = 0; attempt < 20 && !ready_; ++attempt) {
+        ready_ = BSP_TS_Init(0, &ts_init) == BSP_ERROR_NONE;
+        if (!ready_)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
     return ready_;
 }
 
