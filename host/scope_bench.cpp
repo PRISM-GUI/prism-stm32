@@ -4,6 +4,7 @@
 //
 //   host/build/scope_bench [out.ppm] [frames]
 
+#include "app/alloc_count.hpp"
 #include "app/audio_scope.hpp"
 #include "app/frame_stats.hpp"
 #include "app/synthetic_source.hpp"
@@ -54,27 +55,36 @@ int main(int argc, char **argv)
     scope.tree().set_text_measurer(&fonts);
     std::vector<std::uint32_t> fb(std::size_t(W) * H);
     raster::Canvas canvas{fb, W, H, W};
-    app::FrameStats stats{Clock::now()};
+    app::FrameStats stats{Clock::now(), prism_allocation_count()};
 
+    std::uint32_t allocs[3] = {}; // per stage, in the last frame: update, snapshot, draw
     for (std::uint64_t version = 1; version <= std::uint64_t(frames); ++version) {
         app::StageTimes t;
+        auto count = prism_allocation_count();
         auto start = Clock::now();
         scope.tick();
         t.update = since(start);
+        allocs[0] = prism_allocation_count() - count;
+        count = prism_allocation_count();
         start = Clock::now();
         auto snap = scope.tree().build_snapshot(W, H, version);
         scope.tree().clear_dirty();
         t.snapshot = since(start);
+        allocs[1] = prism_allocation_count() - count;
+        count = prism_allocation_count();
         start = Clock::now();
         canvas.clear(snap->window.background);
         raster::draw(canvas, *snap, fonts);
         t.draw = since(start);
+        allocs[2] = prism_allocation_count() - count;
         stats.add(t);
-        if (auto line = stats.tick(Clock::now())) {
+        if (auto line = stats.tick(Clock::now(), prism_allocation_count())) {
             std::printf("%s\n", line->c_str());
             scope.show_stats(*line);
         }
     }
+    std::printf("allocations in the last frame: update %u, snapshot %u, draw %u\n",
+                unsigned(allocs[0]), unsigned(allocs[1]), unsigned(allocs[2]));
     if (!write_ppm(path, fb)) {
         std::fprintf(stderr, "cannot write %s\n", path);
         return 1;

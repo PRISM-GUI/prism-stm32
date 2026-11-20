@@ -6,6 +6,7 @@
 // the same `shown` model_app's dispatch uses.
 #include "runtime.hpp"
 
+#include "app/alloc_count.hpp"
 #include "app/frame_stats.hpp"
 
 #include <prism/app/event_routing.hpp>
@@ -27,7 +28,6 @@
 #include <optional>
 #include <pthread.h>
 #include <thread>
-#include <vector>
 
 namespace app {
 namespace {
@@ -48,7 +48,9 @@ struct Handoff {
     std::chrono::microseconds pending_update_time{}; // the example's tick() before `pending`
     std::chrono::microseconds pending_build_time{};  // how long `pending` took to build
     std::shared_ptr<const prism::render::SceneSnapshot> shown;
-    std::vector<StageTimes> finished; // frames the render thread completed, for FrameStats
+    // The timing summary: the render thread adds each finished frame, the logic thread reads
+    // a line once a second. Fixed-size, so neither side allocates per frame.
+    FrameStats stats{std::chrono::steady_clock::now(), prism_allocation_count()};
 };
 
 using Clock = std::chrono::steady_clock;
@@ -109,17 +111,15 @@ void publish(WidgetTree &tree, Handoff &h, std::uint64_t version,
     h.cv.notify_one();
 }
 
-// Feeds the frames the render thread finished into the stats; shows the line once a second.
-void report_stats(Handoff &h, FrameStats &stats, Example &example)
+// Shows the timing line once a second (the render thread fed the frames into h.stats).
+void report_stats(Handoff &h, Example &example)
 {
-    std::vector<StageTimes> finished;
+    std::optional<std::string> line;
     {
         std::lock_guard lock{h.mu};
-        finished.swap(h.finished);
+        line = h.stats.tick(Clock::now(), prism_allocation_count());
     }
-    for (const auto &t : finished)
-        stats.add(t);
-    if (auto line = stats.tick(Clock::now()))
+    if (line)
         example.show_stats(*line);
 }
 
@@ -135,14 +135,13 @@ void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
     std::uint64_t version = 0;
     publish(tree, h, ++version, {});
 
-    FrameStats stats{Clock::now()};
     std::optional<Point> last_touch;
     for (;;) {
         route_touch(tree, h, touch.read(), last_touch);
         const auto update_start = Clock::now();
         example->tick();
         const auto update_time = since(update_start);
-        report_stats(h, stats, *example);
+        report_stats(h, *example);
         if (tree.any_dirty())
             publish(tree, h, ++version, update_time);
         std::this_thread::sleep_for(kPollPeriod);
@@ -151,6 +150,10 @@ void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
 
 void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
 {
+    // One canvas for the whole run, pointed at each frame's back buffer: it keeps its scratch
+    // storage, so drawing does not allocate after the first frame.
+    raster::Canvas canvas{sink.back(), static_cast<int>(kWidth), static_cast<int>(kHeight),
+                          static_cast<int>(kWidth)};
     for (;;) {
         std::shared_ptr<const SceneSnapshot> snap;
         StageTimes times;
@@ -162,8 +165,7 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
             times.update = h.pending_update_time;
             times.snapshot = h.pending_build_time;
         }
-        raster::Canvas canvas{sink.back(), static_cast<int>(kWidth), static_cast<int>(kHeight),
-                              static_cast<int>(kWidth)};
+        canvas.retarget(sink.back());
         auto start = Clock::now();
         canvas.clear(snap->window.background); // clearing is the caller's job, as with SDL
         raster::draw(canvas, *snap, fonts);
@@ -174,7 +176,7 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
         {
             std::lock_guard lock{h.mu};
             h.shown = snap;
-            h.finished.push_back(times);
+            h.stats.add(times);
         }
     }
 }

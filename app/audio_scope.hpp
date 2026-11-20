@@ -26,7 +26,7 @@ struct ScopeModel {
     prism::core::Field<prism::ui::Slider<>> gain{
         {.value = 1.0, .min = 0.5, .max = 8.0, .step = 0.5, .label = "gain"}};
     prism::plot::PlotModel waveform, spectrum;
-    prism::core::Field<prism::ui::Label<>> stats{{.value = "measuring…"}};
+    prism::core::Field<prism::ui::Label<>> stats{{.value = "measuring…", .wrap = true}};
 
     void view(prism::app::WidgetTree::ViewBuilder &vb);
 };

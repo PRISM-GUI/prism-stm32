@@ -293,6 +293,32 @@ static void test_clock_resolution() {
     check("13 steady_clock steps < 1 ms and never goes back", step > 0 && step < 1000 && monotonic);
 }
 
+// The heap allocation counter the timing line reads (posix/alloc_count.c): every C++ new and
+// C malloc/calloc goes through newlib's _malloc_r once.
+extern "C" uint32_t prism_allocation_count(void);
+
+static void test_allocation_count() {
+    const uint32_t before = prism_allocation_count();
+    // escape(): the compiler may drop an allocation whose pointer is never used.
+    const auto escape = [](void *ptr) { asm volatile("" : : "r"(ptr) : "memory"); };
+    int *p = new int(7);
+    escape(p);
+    const uint32_t after_new = prism_allocation_count();
+    void *m = std::malloc(100);
+    escape(m);
+    void *c = std::calloc(4, 25);
+    escape(c);
+    const uint32_t after_c = prism_allocation_count();
+    delete p;
+    std::free(m);
+    std::free(c);
+    const uint32_t after_free = prism_allocation_count();
+    std::printf("   allocations: new %u, malloc+calloc %u, free %u\n", unsigned(after_new - before),
+                unsigned(after_c - after_new), unsigned(after_free - after_c));
+    check("14 allocation count: new +1, malloc+calloc +2, free +0",
+          after_new - before == 1 && after_c - after_new == 2 && after_free == after_c);
+}
+
 static void test_task(void *) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // one _write per printf: whole lines, no buffering races
     qemu_log("posix-on-FreeRTOS tests (mps2-an500)\n");
@@ -309,6 +335,7 @@ static void test_task(void *) {
     test_malloc_stress();
     test_printf_two_threads();
     test_clock_resolution();
+    test_allocation_count();
     std::printf("failures: %d\n", failures);
     exit_qemu(failures); // exit code = number of failures
 }

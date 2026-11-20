@@ -19,7 +19,7 @@ TEST_CASE("frame stats: no line before a second has passed")
     const auto start = Clock::now();
     app::FrameStats stats{start};
     stats.add(frame(5, 2, 10, 1));
-    CHECK_FALSE(stats.tick(start + 500ms).has_value());
+    CHECK_FALSE(stats.tick(start + 500ms, 0).has_value());
 }
 
 TEST_CASE("frame stats: one line per second with fps and average stage times")
@@ -28,7 +28,7 @@ TEST_CASE("frame stats: one line per second with fps and average stage times")
     app::FrameStats stats{start};
     stats.add(frame(5, 2, 10, 1));
     stats.add(frame(7, 4, 20, 1));
-    CHECK(stats.tick(start + 1s) == "2 fps \u00b7 update 6.00 \u00b7 snapshot 3.00 \u00b7 draw 15.00 \u00b7 present 1.00 ms");
+    CHECK(stats.tick(start + 1s, 0) == "2 fps \u00b7 0 allocs/frame \u00b7 update 6.00 \u00b7 snapshot 3.00 \u00b7 draw 15.00 \u00b7 present 1.00 ms");
 }
 
 TEST_CASE("frame stats: a second without frames reads 0 fps, not the previous numbers")
@@ -36,8 +36,8 @@ TEST_CASE("frame stats: a second without frames reads 0 fps, not the previous nu
     const auto start = Clock::now();
     app::FrameStats stats{start};
     stats.add(frame(5, 2, 10, 1));
-    (void)stats.tick(start + 1s);
-    CHECK(stats.tick(start + 2s) == "0 fps \u00b7 update - \u00b7 snapshot - \u00b7 draw - \u00b7 present - ms");
+    (void)stats.tick(start + 1s, 0);
+    CHECK(stats.tick(start + 2s, 5) == "0 fps \u00b7 - allocs/frame \u00b7 update - \u00b7 snapshot - \u00b7 draw - \u00b7 present - ms");
 }
 
 TEST_CASE("frame stats: sub-millisecond stages keep their precision")
@@ -46,5 +46,24 @@ TEST_CASE("frame stats: sub-millisecond stages keep their precision")
     app::FrameStats stats{start};
     stats.add({std::chrono::microseconds(120), std::chrono::microseconds(450),
                std::chrono::microseconds(8300), std::chrono::microseconds(30)});
-    CHECK(stats.tick(start + 1s) == "1 fps \u00b7 update 0.12 \u00b7 snapshot 0.45 \u00b7 draw 8.30 \u00b7 present 0.03 ms");
+    CHECK(stats.tick(start + 1s, 0) == "1 fps \u00b7 0 allocs/frame \u00b7 update 0.12 \u00b7 snapshot 0.45 \u00b7 draw 8.30 \u00b7 present 0.03 ms");
+}
+
+TEST_CASE("frame stats: allocations per frame since the previous line")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 1000};      // the allocation counter read at start
+    stats.add(frame(1, 1, 1, 1));
+    stats.add(frame(1, 1, 1, 1));
+    CHECK(stats.tick(start + 1s, 1820)->starts_with("2 fps \u00b7 410 allocs/frame \u00b7"));
+    stats.add(frame(1, 1, 1, 1));
+    CHECK(stats.tick(start + 2s, 1820)->starts_with("1 fps \u00b7 0 allocs/frame \u00b7"));
+}
+
+TEST_CASE("frame stats: the allocation counter may wrap around")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 0xFFFFFFF0u};
+    stats.add(frame(1, 1, 1, 1));
+    CHECK(stats.tick(start + 1s, 0x10u)->starts_with("1 fps \u00b7 32 allocs/frame \u00b7"));
 }

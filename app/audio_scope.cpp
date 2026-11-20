@@ -48,7 +48,7 @@ void ScopeModel::view(prism::app::WidgetTree::ViewBuilder &vb)
         vb.hstack([&] {
             for (auto *plot : {&waveform, &spectrum})
                 vb.canvas(*plot)
-                    .min_size(prism::core::Height{150.f})
+                    .min_size(prism::core::Height{130.f})
                     .depends_on(plot->x_range)
                     .depends_on(plot->y_range)
                     .depends_on(plot->view)
@@ -113,7 +113,9 @@ void AudioScope::update_plots()
 
 void AudioScope::show_stats(const std::string &line)
 {
-    model_.stats.set({.value = line});
+    auto label = model_.stats.get();
+    label.value = line;
+    model_.stats.set(label);
 }
 
 std::unique_ptr<Example> make_scope_example(SampleSource &source)

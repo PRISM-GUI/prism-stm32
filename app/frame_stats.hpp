@@ -1,9 +1,11 @@
 #pragma once
 
 // Per-frame timing, summarized once a second into the line the examples show on screen:
-// "24 fps · update 1.20 · snapshot 9.10 · draw 22.40 · present 0.30 ms" (averages, in ms).
+// "24 fps · 412 allocs/frame · update 1.20 · snapshot 9.10 · draw 22.40 · present 0.30 ms"
+// (averages; allocations are heap allocations by any thread, per frame drawn).
 
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -17,15 +19,19 @@ struct StageTimes {
 
 class FrameStats {
 public:
-    explicit FrameStats(std::chrono::steady_clock::time_point start) : window_start_(start) {}
+    // `allocations` is a running count of heap allocations (it may wrap around), read now.
+    explicit FrameStats(std::chrono::steady_clock::time_point start, std::uint32_t allocations = 0)
+        : window_start_(start), window_allocations_(allocations) {}
 
     void add(StageTimes t);
     // The summary of the last second once a second has passed since the previous one, then
-    // starts a new second; nullopt before that.
-    std::optional<std::string> tick(std::chrono::steady_clock::time_point now);
+    // starts a new second; nullopt before that. `allocations`: the running count, read now.
+    std::optional<std::string> tick(std::chrono::steady_clock::time_point now,
+                                    std::uint32_t allocations);
 
 private:
     std::chrono::steady_clock::time_point window_start_;
+    std::uint32_t window_allocations_;
     StageTimes sum_{};
     int frames_ = 0;
 };

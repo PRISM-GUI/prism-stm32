@@ -137,9 +137,17 @@ foreach t : ['test_audio_scope']
   test(t, e)
 endforeach
 
-executable('scope_bench', files('scope_bench.cpp'),
+executable('scope_bench', files('scope_bench.cpp', 'alloc_count_host.cpp'),
   include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
   cpp_args : cmsis_dsp_host_args,
   link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
   dependencies : deps,
 )
+
+test('test_raster_allocations', executable('test_raster_allocations',
+  files('tests' / 'test_raster_allocations.cpp', 'alloc_count_host.cpp'),
+  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
+  cpp_args : cmsis_dsp_host_args,
+  link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
+  dependencies : deps + [doctest_dep],
+))

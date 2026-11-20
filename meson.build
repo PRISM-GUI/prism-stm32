@@ -77,6 +77,9 @@ cmsis_dsp = static_library('cmsis_dsp', files(
   c_args : ['-w'],
 )
 
+# Heap allocations go through posix/alloc_count.c first, which counts them (the timing line).
+alloc_count_link_arg = '-Wl,--wrap=_malloc_r'
+
 # ---- QEMU board support (mps2-an500) + FreeRTOS + posix/ layer + test firmwares ----
 # The board support (startup, semihosting, hooks, FreeRTOSConfig.h, linker script) lives in
 # boards/qemu_mps2/ and is shared by every firmware for that board; a different board gets its
@@ -118,6 +121,7 @@ posix = static_library('posix', files(
     'posix' / 'posix_rwlock.c',
     'posix' / 'posix_time.c',
     'posix' / 'newlib_locks.c',
+    'posix' / 'alloc_count.c',
     'posix' / 'tls.c',
     'posix' / 'tls_support.S',
   ),
@@ -138,7 +142,7 @@ posix_tests = executable('posix_tests.elf', files('tests' / 'posix_qemu' / 'main
   link_whole : [posix, qemu_board],
   link_depends : files(qemu_board_dir / 'mps2_an500.ld'),
   link_with : freertos,
-  link_args : ['-T', qemu_ld],
+  link_args : ['-T', qemu_ld, alloc_count_link_arg],
 )
 
 # PRISM's core (prism_core) as a firmware: a model, a WidgetTree, snapshots —
@@ -151,7 +155,7 @@ prism_tests = executable('prism_tests.elf', files('tests' / 'prism_qemu' / 'main
   link_with : [prism_core, raster_lib, freertos],
   link_whole : [posix, qemu_board],
   link_depends : files(qemu_board_dir / 'mps2_an500.ld'),
-  link_args : ['-T', qemu_ld],
+  link_args : ['-T', qemu_ld, alloc_count_link_arg],
 )
 
 # ---- STM32H7B3I-DK board support (boards/stm32h7b3i_dk/) + ST's HAL/BSP + the demo app ----
@@ -267,6 +271,7 @@ posix_board = static_library('posix_stm32h7b3i_dk', files(
     'posix' / 'posix_rwlock.c',
     'posix' / 'posix_time.c',
     'posix' / 'newlib_locks.c',
+    'posix' / 'alloc_count.c',
     'posix' / 'tls.c',
     'posix' / 'tls_support.S',
   ),
@@ -318,7 +323,7 @@ stm32h7b3i_dk = executable('stm32h7b3i_dk.elf', board_sources,
   # in to replace a weak definition that is already there.
   link_whole : [posix_board, stm32_board],
   link_depends : files(board_dir / 'stm32h7b3.ld'),
-  link_args : ['-T', board_ld],
+  link_args : ['-T', board_ld, alloc_count_link_arg],
   c_args : board_defines,
   cpp_args : board_defines + example_defines,
 )
@@ -333,7 +338,7 @@ stm32h7b3i_dk_renode = executable('stm32h7b3i_dk_renode.elf', board_sources,
   # in to replace a weak definition that is already there.
   link_whole : [posix_board, stm32_board],
   link_depends : files(board_dir / 'stm32h7b3.ld'),
-  link_args : ['-T', board_ld],
+  link_args : ['-T', board_ld, alloc_count_link_arg],
   c_args : board_defines,
   cpp_args : board_defines + example_defines + ['-DPRISM_RENODE'],
 )
