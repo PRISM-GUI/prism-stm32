@@ -1,21 +1,45 @@
-/* POSIX time on the FreeRTOS tick count.
+/* POSIX time on the FreeRTOS tick count, refined within a tick by the SysTick counter.
    simplify: CLOCK_REALTIME == CLOCK_MONOTONIC == time since boot (there is no
-   wall clock); sub-tick precision is not provided. */
+   wall clock). */
 #include "posix_internal.h"
 #include <sys/time.h>
 #include <unistd.h>
 
-static void now_ms(uint64_t *ms) {
-    *ms = (uint64_t)xTaskGetTickCount() * 1000u / (uint64_t)configTICK_RATE_HZ;
+/* SysTick and the interrupt control register are architectural on every Cortex-M (ARMv7-M
+   ARM, B3.3 and B3.2.4): the same addresses on the H7B3 and on QEMU's MPS2. */
+#define SYST_RVR (*(volatile uint32_t *)0xE000E014u) /* reload value: a tick is RVR + 1 counts */
+#define SYST_CVR (*(volatile uint32_t *)0xE000E018u) /* current value: counts down to 0 */
+#define SCB_ICSR (*(volatile uint32_t *)0xE000ED04u)
+#define ICSR_PENDSTSET (1u << 26)                    /* a SysTick interrupt is pending */
+
+static uint32_t systick_pending(void) { return (SCB_ICSR & ICSR_PENDSTSET) ? 1u : 0u; }
+
+/* Microseconds since boot. A consistent (tick count, counter) pair: retried when the tick
+   interrupt ran in between, and a wrap whose interrupt is still pending counts as a tick. */
+static uint64_t now_us(void) {
+    const uint64_t us_per_tick = 1000000u / configTICK_RATE_HZ;
+    const uint32_t reload = SYST_RVR;
+    TickType_t ticks, again;
+    uint32_t counter, pending, pending_after;
+    do {
+        ticks = xTaskGetTickCount();
+        pending = systick_pending();
+        counter = SYST_CVR;
+        pending_after = systick_pending();
+        again = xTaskGetTickCount();
+    } while (ticks != again || pending != pending_after);
+    const uint64_t whole = ((uint64_t)ticks + pending) * us_per_tick;
+    if (reload == 0u) /* SysTick not started yet (before the scheduler) */
+        return whole;
+    return whole + (uint64_t)(reload - counter) * us_per_tick / ((uint64_t)reload + 1u);
 }
 
 int clock_gettime(clockid_t clock_id, struct timespec *tp) {
     if (!tp) return EINVAL;
     if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC) return EINVAL;
-    uint64_t ms;
-    now_ms(&ms);
-    tp->tv_sec = (time_t)(ms / 1000u);
-    tp->tv_nsec = (long)((ms % 1000u) * 1000000u);
+    const uint64_t us = now_us();
+    tp->tv_sec = (time_t)(us / 1000000u);
+    tp->tv_nsec = (long)((us % 1000000u) * 1000u);
     return 0;
 }
 
@@ -63,10 +87,9 @@ int usleep(useconds_t useconds) {
 int _gettimeofday(struct timeval *tv, void *tz) {
     (void)tz;
     if (tv) {
-        uint64_t ms;
-        now_ms(&ms);
-        tv->tv_sec = (time_t)(ms / 1000u);
-        tv->tv_usec = (suseconds_t)((ms % 1000u) * 1000u);
+        const uint64_t us = now_us();
+        tv->tv_sec = (time_t)(us / 1000000u);
+        tv->tv_usec = (suseconds_t)(us % 1000000u);
     }
     return 0;
 }
@@ -74,9 +97,7 @@ int _gettimeofday(struct timeval *tv, void *tz) {
 int gettimeofday(struct timeval *tv, void *tz) { return _gettimeofday(tv, tz); }
 
 time_t time(time_t *timer) {
-    uint64_t ms;
-    now_ms(&ms);
-    time_t s = (time_t)(ms / 1000u);
+    time_t s = (time_t)(now_us() / 1000000u);
     if (timer) *timer = s;
     return s;
 }

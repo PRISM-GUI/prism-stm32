@@ -273,6 +273,26 @@ static void test_printf_two_threads() {
     check("12 printf from 2 threads x50 lines, all out", done.load() == kThreads);
 }
 
+// The stage timings (app/frame_stats) measure sub-millisecond work: steady_clock must step by
+// less than a tick, and must never go backwards across a tick boundary.
+static void test_clock_resolution() {
+    using Clock = std::chrono::steady_clock;
+    const auto first = Clock::now();
+    auto next = first;
+    while (next == first)
+        next = Clock::now();
+    const auto step = std::chrono::duration_cast<std::chrono::microseconds>(next - first).count();
+    bool monotonic = true;
+    auto prev = Clock::now();
+    for (int i = 0; i < 200000; ++i) {
+        const auto now = Clock::now();
+        monotonic = monotonic && now >= prev;
+        prev = now;
+    }
+    std::printf("   clock step %lld us\n", static_cast<long long>(step));
+    check("13 steady_clock steps < 1 ms and never goes back", step > 0 && step < 1000 && monotonic);
+}
+
 static void test_task(void *) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // one _write per printf: whole lines, no buffering races
     qemu_log("posix-on-FreeRTOS tests (mps2-an500)\n");
@@ -288,6 +308,7 @@ static void test_task(void *) {
     test_shared_mutex();
     test_malloc_stress();
     test_printf_two_threads();
+    test_clock_resolution();
     std::printf("failures: %d\n", failures);
     exit_qemu(failures); // exit code = number of failures
 }
