@@ -57,6 +57,15 @@ CMSIS-DSP's real FFT:
 
     git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP third_party/CMSIS-DSP
 
+ST's audio BSP also needs the CS42L51 codec driver at the commit STM32CubeH7 pins (the
+latest release renamed constants the BSP uses), and its `"../Common/audio.h"` include needs a
+`BSP/Common` link in the Cube layout:
+
+    git clone https://github.com/STMicroelectronics/stm32-cs42l51 third_party/stm32-cs42l51
+    git -C third_party/stm32-cs42l51 checkout a87f2621eec27f368026e91ce07c4c65c2e0955c
+    ln -s ../../../../stm32-cs42l51 third_party/st/Drivers/BSP/Components/cs42l51
+    ln -s Components/Common third_party/st/Drivers/BSP/Common
+
 ## QEMU board support and the test firmwares (mps2-an500)
 
 `boards/qemu_mps2/` is the board support for QEMU's MPS2-AN500 board (Cortex-M7), shared by
