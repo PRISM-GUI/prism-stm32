@@ -6,7 +6,7 @@
 // the same `shown` model_app's dispatch uses.
 #include "runtime.hpp"
 
-#include "demo.hpp"
+#include "app/frame_stats.hpp"
 
 #include <prism/app/event_routing.hpp>
 #include <prism/app/widget_tree.hpp>
@@ -27,6 +27,7 @@
 #include <optional>
 #include <pthread.h>
 #include <thread>
+#include <vector>
 
 namespace app {
 namespace {
@@ -44,8 +45,17 @@ struct Handoff {
     std::mutex mu;
     std::condition_variable cv;
     std::shared_ptr<const prism::render::SceneSnapshot> pending;
+    std::chrono::microseconds pending_build_time{}; // how long `pending` took to build
     std::shared_ptr<const prism::render::SceneSnapshot> shown;
+    std::vector<StageTimes> finished; // frames the render thread completed, for FrameStats
 };
+
+using Clock = std::chrono::steady_clock;
+
+std::chrono::microseconds since(Clock::time_point start)
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start);
+}
 
 using prism::app::WidgetTree;
 using prism::core::Point;
@@ -80,39 +90,55 @@ void route_touch(WidgetTree &tree, Handoff &h, std::optional<Point> now,
     last = now;
 }
 
-void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts)
+// Builds a snapshot of the tree and hands it to the render thread, with its build time.
+void publish(WidgetTree &tree, Handoff &h, std::uint64_t version)
 {
-    DemoModel model;
-    WidgetTree tree(model);
-    tree.set_text_measurer(&fonts); // layout measures with the same fonts the rasterizer draws with
+    const auto start = Clock::now();
+    auto snap = tree.build_snapshot(kWidth, kHeight, version);
+    tree.clear_dirty();
+    const auto build_time = since(start);
+    {
+        std::lock_guard lock{h.mu};
+        h.pending = std::move(snap);
+        h.pending_build_time = build_time;
+    }
+    h.cv.notify_one();
+}
 
-    // The "+1" button increments the counter; the click fires during dispatch, on this thread.
-    prism::core::Connection on_click = model.increment.on_change().connect(
-        [&model](const prism::ui::Button &) { model.counter.set(model.counter.get() + 1); });
+// Feeds the frames the render thread finished into the stats; shows the line once a second.
+void report_stats(Handoff &h, FrameStats &stats, Example &example)
+{
+    std::vector<StageTimes> finished;
+    {
+        std::lock_guard lock{h.mu};
+        finished.swap(h.finished);
+    }
+    for (const auto &t : finished)
+        stats.add(t);
+    if (auto line = stats.tick(Clock::now()))
+        example.show_stats(*line);
+}
+
+void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
+                const ExampleFactory &make_example)
+{
+    std::unique_ptr<Example> example = make_example();
+    WidgetTree &tree = example->tree();
+    tree.set_text_measurer(&fonts); // layout measures with the same fonts the rasterizer draws with
 
     // First frame, handed to the render thread like any other: it draws and presents it
     // (and records it as `shown`, which input is hit-tested against).
     std::uint64_t version = 0;
-    {
-        auto snap = tree.build_snapshot(kWidth, kHeight, ++version);
-        tree.clear_dirty();
-        std::lock_guard lock{h.mu};
-        h.pending = std::move(snap);
-    }
-    h.cv.notify_one();
+    publish(tree, h, ++version);
 
+    FrameStats stats{Clock::now()};
     std::optional<Point> last_touch;
     for (;;) {
         route_touch(tree, h, touch.read(), last_touch);
-        if (tree.any_dirty()) {
-            auto snap = tree.build_snapshot(kWidth, kHeight, ++version);
-            tree.clear_dirty();
-            {
-                std::lock_guard lock{h.mu};
-                h.pending = std::move(snap);
-            }
-            h.cv.notify_one();
-        }
+        example->tick();
+        report_stats(h, stats, *example);
+        if (tree.any_dirty())
+            publish(tree, h, ++version);
         std::this_thread::sleep_for(kPollPeriod);
     }
 }
@@ -121,20 +147,27 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
 {
     for (;;) {
         std::shared_ptr<const SceneSnapshot> snap;
+        StageTimes times;
         {
             std::unique_lock lock{h.mu};
             h.cv.wait(lock, [&] { return h.pending != nullptr; });
             snap = std::move(h.pending);
             h.pending = nullptr;
+            times.snapshot = h.pending_build_time;
         }
         raster::Canvas canvas{sink.back(), static_cast<int>(kWidth), static_cast<int>(kHeight),
                               static_cast<int>(kWidth)};
+        auto start = Clock::now();
         canvas.clear(snap->window.background); // clearing is the caller's job, as with SDL
         raster::draw(canvas, *snap, fonts);
+        times.draw = since(start);
+        start = Clock::now();
         sink.present();
+        times.present = since(start);
         {
             std::lock_guard lock{h.mu};
             h.shown = snap;
+            h.finished.push_back(times);
         }
     }
 }
@@ -144,12 +177,13 @@ struct RunArgs {
     FrameSink *sink;
     TouchSource *touch;
     raster::Fonts *fonts;
+    ExampleFactory *make_example;
 };
 
 void *logic_entry(void *p)
 {
     auto &a = *static_cast<RunArgs *>(p);
-    logic_main(*a.h, *a.touch, *a.fonts);
+    logic_main(*a.h, *a.touch, *a.fonts, *a.make_example);
     return nullptr;
 }
 
@@ -162,14 +196,14 @@ void *render_entry(void *p)
 
 } // namespace
 
-void run(FrameSink &sink, TouchSource &touch)
+void run(FrameSink &sink, TouchSource &touch, ExampleFactory make_example)
 {
     // raster::Fonts is the shared text measurer: measure() runs on the logic thread,
     // glyph rasterization on the render thread; the faces are immutable and the glyph
     // cache is mutex-guarded (raster/fonts.hpp).
     raster::Fonts fonts;
     Handoff h;
-    RunArgs args{&h, &sink, &touch, &fonts};
+    RunArgs args{&h, &sink, &touch, &fonts, &make_example};
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);

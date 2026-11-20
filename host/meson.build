@@ -109,12 +109,13 @@ cmsis_dsp = static_library('cmsis_dsp', files(
 scope_lib = static_library('scope', files(
     repo / 'app' / 'spectrum.cpp',
     repo / 'app' / 'synthetic_source.cpp',
+    repo / 'app' / 'frame_stats.cpp',
   ),
   include_directories : [repo_inc, cmsis_dsp_inc],
   cpp_args : cmsis_dsp_host_args,
 )
 
-foreach t : ['test_spectrum', 'test_synthetic_source']
+foreach t : ['test_spectrum', 'test_synthetic_source', 'test_frame_stats']
   e = executable(t, files('tests' / (t + '.cpp')),
     include_directories : [repo_inc, cmsis_dsp_inc],
     cpp_args : cmsis_dsp_host_args,

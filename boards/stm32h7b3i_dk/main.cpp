@@ -5,6 +5,7 @@
 #include "app/runtime.hpp"
 #include "display.hpp"
 #include "touch.hpp"
+#include "app/widgets_example.hpp"
 
 #include "stm32h7b3i_discovery.h"
 #include "stm32h7b3i_discovery_sdram.h"
@@ -141,6 +142,12 @@ static void SystemClock_Config(void)
 
 // --- Firmware ---
 
+// The example this firmware runs, chosen at build time (meson option `example`).
+static app::ExampleFactory make_example()
+{
+    return app::make_widgets_example;
+}
+
 static void app_task(void *)
 {
     // Static so they live for the whole app (run() never returns).
@@ -158,7 +165,7 @@ static void app_task(void *)
     // screen still shows that PRISM runs; LED3 lit says touch is missing.
     if (!touch.init())
         BSP_LED_On(LED3);
-    app::run(display, touch);
+    app::run(display, touch, make_example());
 }
 
 extern "C" int main(void)

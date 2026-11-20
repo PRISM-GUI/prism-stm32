@@ -288,6 +288,7 @@ board_sources = files(
   board_dir / 'display.cpp',
   board_dir / 'touch.cpp',
   'app' / 'runtime.cpp',
+  'app' / 'frame_stats.cpp',
 )
 board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.')]
 
