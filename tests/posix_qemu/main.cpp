@@ -319,6 +319,29 @@ static void test_allocation_count() {
           after_new - before == 1 && after_c - after_new == 2 && after_free == after_c);
 }
 
+// The allocation guard (posix/alloc_count.c): while armed, every allocation is a violation,
+// and the first one's caller is recorded. Built without the trap here, so the test continues.
+extern "C" void prism_allocation_guard_arm(void);
+extern "C" void prism_allocation_guard_disarm(void);
+extern "C" uint32_t prism_allocation_violations(void);
+extern "C" void *prism_allocation_first_violation(void);
+
+static void test_allocation_guard() {
+    const auto escape = [](void *ptr) { asm volatile("" : : "r"(ptr) : "memory"); };
+    const uint32_t before = prism_allocation_violations();
+    prism_allocation_guard_arm();
+    int *p = new int(3);
+    escape(p);
+    prism_allocation_guard_disarm();
+    int *q = new int(4);
+    escape(q);
+    const bool counted = prism_allocation_violations() - before == 1;
+    const bool located = prism_allocation_first_violation() != nullptr;
+    delete p;
+    delete q;
+    check("15 allocation guard: armed new is a violation, with its caller", counted && located);
+}
+
 static void test_task(void *) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // one _write per printf: whole lines, no buffering races
     qemu_log("posix-on-FreeRTOS tests (mps2-an500)\n");
@@ -336,6 +359,7 @@ static void test_task(void *) {
     test_printf_two_threads();
     test_clock_resolution();
     test_allocation_count();
+    test_allocation_guard();
     std::printf("failures: %d\n", failures);
     exit_qemu(failures); // exit code = number of failures
 }

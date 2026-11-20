@@ -158,6 +158,12 @@ The firmware runs one of two examples, chosen with the meson option `example`
 
 `host/build/scope_bench` runs the same scope on the PC and prints the same timing line.
 
+Allocation guard: `meson configure build -Dalloc_guard=true` builds a firmware that stops on
+any heap allocation once startup is done (the first timing line, one second in). With a
+debugger attached it halts in the HardFault handler with the full call stack;
+`prism_allocation_first_violation` holds the address that called malloc. Off by default until
+PRISM's frame path is allocation-free (doc/design/allocation-free-frames.md in PRISM).
+
 If it does not boot (black screen, no LED blink): connect the debugger **under reset**
 (`openocd ... -c "reset halt"` / `st-flash` with the board held in reset via the NRST pin)
 and check `build/stm32h7b3i_dk.size.txt` — the .bss (FreeRTOS's 384 KiB heap_4 is in it)

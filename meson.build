@@ -276,6 +276,7 @@ posix_board = static_library('posix_stm32h7b3i_dk', files(
     'posix' / 'tls_support.S',
   ),
   include_directories : [freertos_board_inc, include_directories('posix')],
+  c_args : get_option('alloc_guard') ? ['-DPRISM_ALLOC_GUARD_TRAP'] : [],
 )
 
 # The board's own objects, linked whole into each firmware: the CMSIS startup .s (meson
@@ -312,6 +313,10 @@ board_sources = files(
 board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.'), cmsis_dsp_inc]
 # The example the firmware runs (meson option `example`).
 example_defines = get_option('example') == 'scope' ? ['-DPRISM_EXAMPLE_SCOPE'] : []
+# The allocation guard (meson option `alloc_guard`): the runtime arms it once startup is done.
+if get_option('alloc_guard')
+  example_defines += ['-DPRISM_ALLOC_GUARD']
+endif
 
 # The firmware for the real board.
 stm32h7b3i_dk = executable('stm32h7b3i_dk.elf', board_sources,

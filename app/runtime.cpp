@@ -120,6 +120,15 @@ bool snapshot_waiting(Handoff &h)
     return h.pending != nullptr;
 }
 
+// Startup is over once the first timing line is out (a second of frames: caches and buffers
+// are warm). From then on the guard, when built in, stops on any allocation.
+void arm_allocation_guard()
+{
+#ifdef PRISM_ALLOC_GUARD
+    prism_allocation_guard_arm();
+#endif
+}
+
 // Shows the timing line once a second (the render thread fed the frames into h.stats).
 void report_stats(Handoff &h, Example &example)
 {
@@ -128,8 +137,10 @@ void report_stats(Handoff &h, Example &example)
         std::lock_guard lock{h.mu};
         line = h.stats.tick(Clock::now(), prism_allocation_count());
     }
-    if (line)
+    if (line) {
         example.show_stats(*line);
+        arm_allocation_guard();
+    }
 }
 
 void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
