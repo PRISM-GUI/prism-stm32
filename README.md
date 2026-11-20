@@ -76,6 +76,10 @@ the host side, QEMU, openocd and stlink. From the repository root:
 It starts from Fedora 44 by default; `--build-arg BASE=<image>` puts it on another Fedora 44
 image (our Coder workspace image, for instance).
 
+The workflow in `.github/workflows/image.yml` publishes it to
+`ghcr.io/jeandet/prism-stm32-dev` (tags `latest` and `arm-YYYYMMDD`) when `docker/` or the
+toolchain script changes: `podman pull ghcr.io/jeandet/prism-stm32-dev:latest`.
+
 ## QEMU board support and the test firmwares (mps2-an500)
 
 `boards/qemu_mps2/` is the board support for QEMU's MPS2-AN500 board (Cortex-M7), shared by
