@@ -6,8 +6,8 @@ as-is; everything board-specific lives here.
 
 ## Status
 
-1. **Toolchain** (`scripts/build-toolchain.sh`, also baked into the Coder image
-   `coder-embedded`): GCC 15.2 for the Cortex-M7 whose libstdc++ has threads.
+1. **Toolchain** (`scripts/build-toolchain.sh`, baked into the development image
+   `docker/Dockerfile`): GCC 15.2 for the Cortex-M7 whose libstdc++ has threads.
 2. **POSIX threads on FreeRTOS** (`posix/`): pthreads, keys, mutexes, condition variables,
    rwlocks, clocks, sleeps and `thread_local` (native ARM TLS, `__aeabi_read_tp`). The QEMU
    tests below pass: 12 of 12 before the newlib work, which added two more (malloc under
@@ -64,6 +64,17 @@ with:
 `third_party/st/` is committed as symlinks into those submodules, laid out like STM32CubeH7's
 `Drivers/` tree, because ST's BSP sources include each other by relative path
 (`"../Components/ft5336/ft5336.h"`).
+
+## Development image
+
+`docker/Dockerfile` builds an image with everything above: the threaded arm-none-eabi GCC
+(built from `scripts/build-toolchain.sh`, ~20 min on 16 cores), meson, ninja and GCC 16 for
+the host side, QEMU, openocd and stlink. From the repository root:
+
+    podman build -f docker/Dockerfile -t prism-stm32-dev .
+
+It starts from Fedora 44 by default; `--build-arg BASE=<image>` puts it on another Fedora 44
+image (our Coder workspace image, for instance).
 
 ## QEMU board support and the test firmwares (mps2-an500)
 
