@@ -82,3 +82,38 @@ TEST_CASE("frame stats: the line is written into the stats' own buffer, without 
     REQUIRE(line.has_value());
     CHECK(line->starts_with("1 fps"));
 }
+
+namespace {
+constexpr std::size_t kKB = 1024;
+app::SystemCounters counters(std::uint64_t idle_us)
+{
+    return {.idle_us = idle_us,
+            .heap_used = 230 * kKB, .heap_total = 420 * kKB,
+            .stacks_used = 120 * kKB, .stacks_total = 384 * kKB};
+}
+} // namespace
+
+TEST_CASE("frame stats: CPU load and memory lead the line when the platform reports them")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 0, counters(1'000'000)};
+    stats.add(frame(5, 2, 10, 1));
+    // 250 ms of the second idle: the CPU was busy 75 % of it.
+    CHECK(stats.tick(start + 1s, 0, counters(1'250'000)) ==
+          "1 fps · CPU 75% · heap 230/420 KB · stacks 120/384 KB · 0 allocs/frame · update 5.00 · snapshot 2.00 · draw 10.00 · present 1.00 ms");
+}
+
+TEST_CASE("frame stats: the CPU load is measured over the last second only")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 0, counters(0)};
+    (void)stats.tick(start + 1s, 0, counters(100'000));               // 90 % busy
+    CHECK(stats.tick(start + 2s, 0, counters(1'100'000))->starts_with("0 fps · CPU 0% ·"));
+}
+
+TEST_CASE("frame stats: an idle counter read late never shows a negative load")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 0, counters(0)};
+    CHECK(stats.tick(start + 1s, 0, counters(1'200'000))->starts_with("0 fps · CPU 0% ·"));
+}

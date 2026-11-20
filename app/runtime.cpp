@@ -56,7 +56,7 @@ struct Handoff {
     std::chrono::microseconds pending_build_time{};  // how long `pending` took to build
     // The timing summary: the render thread adds each finished frame, the logic thread reads
     // a line once a second. Fixed-size, so neither side allocates per frame.
-    FrameStats stats{std::chrono::steady_clock::now(), prism_allocation_count()};
+    FrameStats stats{std::chrono::steady_clock::now(), prism_allocation_count(), system_counters()};
 };
 
 using Clock = std::chrono::steady_clock;
@@ -155,9 +155,10 @@ void arm_allocation_guard()
 void report_stats(Handoff &h, Example &example)
 {
     std::optional<std::string_view> line; // in h.stats' buffer: shown before the next tick
+    const std::optional<SystemCounters> system = system_counters(); // takes malloc's lock: not under h.mu
     {
         std::lock_guard lock{h.mu};
-        line = h.stats.tick(Clock::now(), prism_allocation_count());
+        line = h.stats.tick(Clock::now(), prism_allocation_count(), system);
     }
     if (line) {
         example.show_stats(*line);

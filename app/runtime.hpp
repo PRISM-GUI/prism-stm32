@@ -10,6 +10,7 @@
 // and touch.*).
 
 #include "app/example.hpp"
+#include "app/frame_stats.hpp"
 
 #include <prism/core/types.hpp>
 
@@ -32,6 +33,10 @@ struct TouchSource {
     virtual std::optional<prism::core::Point> read() = 0;
     virtual ~TouchSource() = default;
 };
+
+// The CPU and memory counters for the timing line, read now; nullopt where the platform has
+// none. Board code defines it (boards/stm32h7b3i_dk/system_counters.cpp).
+std::optional<SystemCounters> system_counters();
 
 // Runs the Example the factory makes. Never returns (the threads loop forever); call it from
 // a FreeRTOS task and let the task block in it.

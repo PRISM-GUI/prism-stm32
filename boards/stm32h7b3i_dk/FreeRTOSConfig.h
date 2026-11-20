@@ -55,7 +55,20 @@ extern uint32_t SystemCoreClock;
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_TRACE_FACILITY                0
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
-#define configGENERATE_RUN_TIME_STATS           0
+/* Run-time stats in microseconds (posix/posix_time.c), for the timing line's CPU load: the
+   idle task's share of each second (boards/stm32h7b3i_dk/system_counters.cpp). 64-bit so it
+   never wraps. */
+#define configGENERATE_RUN_TIME_STATS           1
+#define configRUN_TIME_COUNTER_TYPE             uint64_t
+#ifndef __ASSEMBLER__
+#include <stdint.h>
+#ifdef __cplusplus
+extern "C"
+#endif
+uint64_t prism_now_us(void);
+#endif
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
+#define portGET_RUN_TIME_COUNTER_VALUE()        prism_now_us()
 
 /* newlib thread safety: same as the QEMU board — each task's TCB embeds a struct _reent
    (include/newlib-freertos.h) and vTaskSwitchContext points newlib's _impure_ptr at the

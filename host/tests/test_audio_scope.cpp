@@ -123,5 +123,74 @@ TEST_CASE("audio scope: the view builds a snapshot and shows the stats line")
     auto snap = scope.tree().build_snapshot(480, 272, 1);
     REQUIRE(snap != nullptr);
     CHECK_FALSE(snap->draw_lists.empty());
-    CHECK(scope.model().title.get().value == "PRISM audio scope · queued");
+    CHECK(scope.model().title.get().value.starts_with("PRISM scope · queued"));
+}
+
+namespace {
+void press_fit(app::AudioScope &scope)
+{
+    auto button = scope.model().fit.get();
+    ++button.click_count;
+    scope.model().fit.set(button);
+}
+} // namespace
+
+TEST_CASE("audio scope: fit scales the waveform to the signal's peak")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    src.push_sine(1000.f, 1024, 0.01f); // a quiet microphone: invisible on the default ±1
+    scope.tick();
+    press_fit(scope);
+    scope.tick();
+    const auto y = scope.model().waveform.y_range.get();
+    CHECK_FALSE(y.auto_fit);
+    CHECK(y.max == doctest::Approx(0.012).epsilon(0.05));
+    CHECK(y.min == doctest::Approx(-y.max));
+}
+
+TEST_CASE("audio scope: fit frames the spectrum's peak, and new samples keep that range")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    src.push_sine(1000.f, 1024, 0.01f);
+    scope.tick();
+    press_fit(scope);
+    scope.tick();
+    const auto fitted = scope.model().spectrum.y_range.get();
+    const float peak = *std::ranges::max_element(scope.spectrum());
+    CHECK(fitted.max > peak);
+    CHECK(fitted.max < -20.0);          // well below the default top of 0 dB
+    CHECK(fitted.min < peak - 40.0);    // the noise floor stays in view
+    src.push_sine(1000.f, 512, 0.01f);
+    scope.tick();
+    CHECK(scope.model().spectrum.y_range.get() == fitted);
+}
+
+TEST_CASE("audio scope: switching dB or linear goes back to that scale's full range")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    src.push_sine(1000.f, 1024, 0.01f);
+    scope.tick();
+    press_fit(scope);
+    scope.tick();
+    auto box = scope.model().db_scale.get();
+    box.checked = false;
+    scope.model().db_scale.set(box);
+    scope.tick();
+    CHECK(scope.model().spectrum.y_range.get().max == doctest::Approx(1.0));
+}
+
+TEST_CASE("audio scope: the title reports the samples received and their peak each second")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    src.push_sine(1000.f, 16000, 0.5f);
+    for (int i = 0; i < 20; ++i)
+        scope.tick();
+    scope.show_stats("1 fps");
+    CHECK(scope.model().title.get().value == "PRISM scope · queued · 16000 S/s · peak -6 dBFS");
+    scope.show_stats("1 fps"); // a second with no samples at all
+    CHECK(scope.model().title.get().value == "PRISM scope · queued · no samples");
 }

@@ -34,6 +34,9 @@ static uint64_t now_us(void) {
     return whole + (uint64_t)(reload - counter) * us_per_tick / ((uint64_t)reload + 1u);
 }
 
+/* The same clock for FreeRTOS's run-time stats (portGET_RUN_TIME_COUNTER_VALUE). */
+uint64_t prism_now_us(void) { return now_us(); }
+
 int clock_gettime(clockid_t clock_id, struct timespec *tp) {
     if (!tp) return EINVAL;
     if (clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC) return EINVAL;

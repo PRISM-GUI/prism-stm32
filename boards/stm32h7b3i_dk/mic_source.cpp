@@ -30,6 +30,11 @@ void push_half(std::size_t half)
 
 bool MicSource::init()
 {
+    // The DFSDM's audio clock (the microphones' bit clock) is SAI1's kernel clock, which the
+    // BSP routes from PLL2 but never enables when only recording: ST's own example on this
+    // board (Examples/BSP, audio_loopback.c) also starts the SAI1 headphone output, which does.
+    // A guess from the first board run (title read "mic", no signal): the title's "S/s" tells.
+    __HAL_RCC_SAI1_CLK_ENABLE();
     BSP_AUDIO_Init_t in = {};
     in.Device = AUDIO_IN_DEVICE_DIGITAL_MIC;
     in.SampleRate = static_cast<std::uint32_t>(kSampleRate);

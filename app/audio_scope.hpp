@@ -2,7 +2,8 @@
 
 // The audio scope example: a SampleSource (the board's microphones, or a generated sweep) shown
 // as a waveform plot (the last 20 ms) and a spectrum plot (0 .. half the sample rate), with
-// freeze, gain and dB/linear controls and the runtime's timing line. Everything goes through
+// freeze, gain, dB/linear and fit controls and the runtime's timing line. The title reports the
+// samples received each second and their peak level, so a silent or stalled source shows. Everything goes through
 // PRISM (plot::PlotModel on vb.canvas), so what is slow on the board is PRISM's cost.
 
 #include "app/example.hpp"
@@ -13,6 +14,8 @@
 #include <prism/core/field.hpp>
 #include <prism/widgets/plot.hpp>
 
+#include <array>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <vector>
@@ -20,11 +23,12 @@
 namespace app {
 
 struct ScopeModel {
-    prism::core::Field<prism::ui::Label<>> title{{.value = "PRISM audio scope", .heading = true}};
+    prism::core::Field<prism::ui::Label<>> title{{.value = "PRISM scope", .heading = true}};
     prism::core::Field<prism::ui::Checkbox> frozen{{.checked = false, .label = "freeze"}};
     prism::core::Field<prism::ui::Checkbox> db_scale{{.checked = true, .label = "dB"}};
     prism::core::Field<prism::ui::Slider<>> gain{
         {.value = 1.0, .min = 0.5, .max = 8.0, .step = 0.5, .label = "gain"}};
+    prism::core::Field<prism::ui::Button> fit{{.text = "fit"}}; // y ranges to the signal now
     prism::plot::PlotModel waveform, spectrum;
     prism::core::Field<prism::ui::Label<>> stats{{.value = "measuring…", .wrap = true}};
 
@@ -49,6 +53,8 @@ public:
 private:
     bool drain_source();  // true when new samples entered the window
     void update_plots();
+    void fit_ranges();
+    void show_level();
 
     SampleSource &source_;
     Spectrum fft_{kFftSize};
@@ -59,6 +65,10 @@ private:
     std::vector<float> spectrum_ = std::vector<float>(kFftSize / 2, Spectrum::kFloorDb);
     double shown_gain_ = 0.0; // the settings the plots were last computed with
     bool shown_db_ = false;
+    std::uint64_t fit_clicks_ = 0;
+    std::size_t samples_since_report_ = 0; // for the title's level readout
+    float peak_since_report_ = 0.f;
+    std::array<char, 96> title_text_{};
     ScopeModel model_;
     prism::app::WidgetTree tree_{model_};
 };

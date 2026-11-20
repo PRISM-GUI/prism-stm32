@@ -309,6 +309,7 @@ board_sources = files(
   'app' / 'spectrum.cpp',
   'app' / 'synthetic_source.cpp',
   board_dir / 'mic_source.cpp',
+  board_dir / 'system_counters.cpp',
 )
 board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.'), cmsis_dsp_inc]
 # The example the firmware runs (meson option `example`).
