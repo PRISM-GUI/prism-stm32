@@ -101,8 +101,12 @@ void *operator new(std::size_t n)
         return p;
     throw std::bad_alloc{};
 }
+// operator new above is malloc: GCC cannot see that through the replaced pair and warns.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
 void operator delete(void *p) noexcept { std::free(p); }
 void operator delete(void *p, std::size_t) noexcept { std::free(p); }
+#pragma GCC diagnostic pop
 
 int main()
 {

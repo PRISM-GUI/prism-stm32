@@ -6,7 +6,12 @@ on:
     paths:
       - 'docker/**'
       - 'scripts/build-toolchain.sh'
+      - '.github/workflows/image.yml'
   workflow_dispatch:
+
+concurrency:
+  group: image
+  cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/jeandet/prism-stm32-dev
@@ -20,7 +25,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: date
         run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0

@@ -25,6 +25,13 @@ struct WidgetsModel {
     prism::core::Connection on_increment = increment.on_change().connect(
         [this](const prism::ui::Button &) { counter.set(counter.get() + 1); });
 
+    WidgetsModel() = default;
+    // The connection's callback holds `this`: a copy or move would count on the old model.
+    WidgetsModel(const WidgetsModel &) = delete;
+    WidgetsModel &operator=(const WidgetsModel &) = delete;
+    WidgetsModel(WidgetsModel &&) = delete;
+    WidgetsModel &operator=(WidgetsModel &&) = delete;
+
     void view(prism::app::WidgetTree::ViewBuilder &vb)
     {
         vb.vstack([&] {

@@ -3,7 +3,7 @@
 # POSIX layer files, which this board compiles against its own FreeRTOSConfig.h.
 project('prism-stm32', 'c', 'cpp',
   version : '0.0.1',
-  default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=s', 'b_staticpic=false',
+  default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=s',
                      'libunibreak:werror=false', 'libunibreak:warning_level=0'],
   meson_version : '>= 1.5.0',
 )

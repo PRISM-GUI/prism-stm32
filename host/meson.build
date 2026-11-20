@@ -80,6 +80,12 @@ foreach t : ['test_audio_scope', 'test_widgets_app']
     dependencies : [scope_dep, prism_raster_dep, doctest_dep]))
 endforeach
 
+# attach_widgets and attach_scope under PRISM's frame runtime (platform library): it calls the two
+# hooks alloc_count_host.cpp defines.
+test('test_frame_hooks', executable('test_frame_hooks',
+  files('tests/test_frame_hooks.cpp', 'alloc_count_host.cpp'),
+  dependencies : [scope_dep, prism_platform_dep, doctest_dep]))
+
 # Its FrameStats comes from PRISM's platform library, which calls the two hooks a program
 # linking it defines: alloc_count_host.cpp has them.
 executable('scope_bench', files('scope_bench.cpp', 'alloc_count_host.cpp'),
