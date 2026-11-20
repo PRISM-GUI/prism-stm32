@@ -6,6 +6,9 @@
 #include "display.hpp"
 #include "touch.hpp"
 #include "app/widgets_example.hpp"
+#include "app/audio_scope.hpp"
+#include "app/synthetic_source.hpp"
+#include "mic_source.hpp"
 
 #include "stm32h7b3i_discovery.h"
 #include "stm32h7b3i_discovery_sdram.h"
@@ -142,10 +145,30 @@ static void SystemClock_Config(void)
 
 // --- Firmware ---
 
+// The scope's samples: the microphones on the board, or the generated sweep where they do not
+// start — and always in Renode, which does not emulate the DFSDM.
+static app::SampleSource &scope_source()
+{
+    static app::SyntheticSource synthetic{MicSource::kSampleRate};
+#ifdef PRISM_RENODE
+    return synthetic;
+#else
+    static MicSource mic;
+    if (mic.init())
+        return mic;
+    return synthetic;
+#endif
+}
+
 // The example this firmware runs, chosen at build time (meson option `example`).
 static app::ExampleFactory make_example()
 {
+#ifdef PRISM_EXAMPLE_SCOPE
+    app::SampleSource &source = scope_source();
+    return [&source] { return app::make_scope_example(source); };
+#else
     return app::make_widgets_example;
+#endif
 }
 
 static void app_task(void *)

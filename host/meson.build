@@ -117,7 +117,7 @@ scope_lib = static_library('scope', files(
   dependencies : deps,
 )
 
-foreach t : ['test_spectrum', 'test_synthetic_source', 'test_frame_stats']
+foreach t : ['test_spectrum', 'test_synthetic_source', 'test_frame_stats', 'test_spsc_ring']
   e = executable(t, files('tests' / (t + '.cpp')),
     include_directories : [repo_inc, cmsis_dsp_inc],
     cpp_args : cmsis_dsp_host_args,

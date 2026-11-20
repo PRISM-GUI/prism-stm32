@@ -209,13 +209,20 @@ hal_lib = static_library('stm32h7_hal', files(
     hal_dir / 'Src' / 'stm32h7xx_hal_sdram.c',
     hal_dir / 'Src' / 'stm32h7xx_ll_fmc.c',      # FMC_SDRAM_* used by the SDRAM HAL
     hal_dir / 'Src' / 'stm32h7xx_hal_mdma.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_dfsdm.c',   # audio in: the MEMS microphones
+    hal_dir / 'Src' / 'stm32h7xx_hal_dfsdm_ex.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_sai.c',     # compiled by ST's audio BSP (codec path, unused)
+    hal_dir / 'Src' / 'stm32h7xx_hal_sai_ex.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_i2s.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_i2s_ex.c',
   ),
   include_directories : board_inc,
   c_args : board_defines,
 )
 
-# The BSP paths the firmware uses: LEDs, the I2C4 bus, LCD (LTDC/DMA2D/TIM2), touch, SDRAM —
-# not audio/SD/camera/EEPROM/OSPI. Plus the touch/SDRAM component drivers they pull in.
+# The BSP paths the firmware uses: LEDs, the I2C4 bus, LCD (LTDC/DMA2D/TIM2), touch, SDRAM,
+# audio in (the microphones) — not SD/camera/EEPROM/OSPI. Plus the component drivers they pull
+# in (the CS42L51 codec only because the audio BSP compiles it: third_party/stm32-cs42l51).
 bsp_lib = static_library('stm32h7b3i_dk_bsp', files(
     st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery.c',
     st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery_bus.c',
@@ -227,6 +234,9 @@ bsp_lib = static_library('stm32h7b3i_dk_bsp', files(
     st_drivers / 'BSP' / 'Components' / 'gt911' / 'gt911.c',
     st_drivers / 'BSP' / 'Components' / 'gt911' / 'gt911_reg.c',
     st_drivers / 'BSP' / 'Components' / 'is42s16800j' / 'is42s16800j.c',
+    st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery_audio.c',
+    st_drivers / 'BSP' / 'Components' / 'cs42l51' / 'cs42l51.c',
+    st_drivers / 'BSP' / 'Components' / 'cs42l51' / 'cs42l51_reg.c',
   ),
   include_directories : board_inc,
   c_args : board_defines,
@@ -289,14 +299,20 @@ board_sources = files(
   board_dir / 'touch.cpp',
   'app' / 'runtime.cpp',
   'app' / 'frame_stats.cpp',
+  'app' / 'audio_scope.cpp',
+  'app' / 'spectrum.cpp',
+  'app' / 'synthetic_source.cpp',
+  board_dir / 'mic_source.cpp',
 )
-board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.')]
+board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.'), cmsis_dsp_inc]
+# The example the firmware runs (meson option `example`).
+example_defines = get_option('example') == 'scope' ? ['-DPRISM_EXAMPLE_SCOPE'] : []
 
 # The firmware for the real board.
 stm32h7b3i_dk = executable('stm32h7b3i_dk.elf', board_sources,
   include_directories : board_incs,
   dependencies : deps,
-  link_with : [prism_core, raster_lib, hal_lib, bsp_lib, freertos_board],
+  link_with : [prism_core, raster_lib, cmsis_dsp, hal_lib, bsp_lib, freertos_board],
   # The board library is linked whole: it overrides weak HAL symbols (HAL_InitTick on TIM6)
   # and the startup file's weak IRQ handlers, and a plain archive member is never pulled
   # in to replace a weak definition that is already there.
@@ -304,14 +320,14 @@ stm32h7b3i_dk = executable('stm32h7b3i_dk.elf', board_sources,
   link_depends : files(board_dir / 'stm32h7b3.ld'),
   link_args : ['-T', board_ld],
   c_args : board_defines,
-  cpp_args : board_defines,
+  cpp_args : board_defines + example_defines,
 )
 
 # The same firmware for Renode (-DPRISM_RENODE: main.cpp skips SystemClock_Config).
 stm32h7b3i_dk_renode = executable('stm32h7b3i_dk_renode.elf', board_sources,
   include_directories : board_incs,
   dependencies : deps,
-  link_with : [prism_core, raster_lib, hal_lib, bsp_lib, freertos_board],
+  link_with : [prism_core, raster_lib, cmsis_dsp, hal_lib, bsp_lib, freertos_board],
   # The board library is linked whole: it overrides weak HAL symbols (HAL_InitTick on TIM6)
   # and the startup file's weak IRQ handlers, and a plain archive member is never pulled
   # in to replace a weak definition that is already there.
@@ -319,7 +335,7 @@ stm32h7b3i_dk_renode = executable('stm32h7b3i_dk_renode.elf', board_sources,
   link_depends : files(board_dir / 'stm32h7b3.ld'),
   link_args : ['-T', board_ld],
   c_args : board_defines,
-  cpp_args : board_defines + ['-DPRISM_RENODE'],
+  cpp_args : board_defines + example_defines + ['-DPRISM_RENODE'],
 )
 
 # Flashable image and size report for the real board.

@@ -35,10 +35,10 @@
 #define USE_CAMERA_SENSOR_OV9655            0U
 
 /* Audio codecs defines */
-#define USE_AUDIO_CODEC_CS42L51             0U
+#define USE_AUDIO_CODEC_CS42L51             1U  /* as ST's example: the audio BSP only compiles with it */
 
 /* Default Audio IN internal buffer size */
-#define DEFAULT_AUDIO_IN_BUFFER_SIZE        2048U
+#define DEFAULT_AUDIO_IN_BUFFER_SIZE        512U  /* 16 ms per DMA half at 16 kHz */
 #define USE_BSP_CPU_CACHE_MAINTENANCE       1U
 
 /* TS defines: no gesture recognition; multi-touch state is still read (single touch used) */

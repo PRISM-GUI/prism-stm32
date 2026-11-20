@@ -133,9 +133,21 @@ if it refuses, use the OpenOCD alternative:)
 
 What to expect: LED2 (blue, PG2) blinks ~2 Hz from the idle hook even if the screen stays
 black; LED3 (red) lit means the touch controller did not answer (the screen still runs, without
-input); the LCD shows the demo UI (dark background, "PRISM on STM32H7", a counter, a "+1"
-button, an "enabled" checkbox, a volume slider); touching "+1" increments the counter, the
-checkbox toggles, the slider drags.
+input).
+
+The firmware runs one of two examples, chosen with the meson option `example`
+(`meson configure build -Dexample=scope` or `widgets`):
+
+- **scope** (the default): the audio scope. The title says where the samples come from:
+  "mic" (the board's MEMS microphone 1, 16 kHz) or "synthetic" (a 200 Hz to 4 kHz sweep, used
+  when the microphones do not start, and always in Renode). Left: the last 20 ms of samples;
+  right: the spectrum, 0 to 8 kHz. "freeze" stops the plots, "dB" switches the spectrum's
+  scale, "gain" scales both. Whistling should move the spectrum's peak. The bottom line is the
+  timing, once a second: frames per second, then per frame the snapshot build, the drawing and
+  the flip to the LCD. Those are the numbers to optimize against.
+- **widgets**: the first demo ("PRISM on STM32H7", a counter, "+1", a checkbox, a slider).
+
+`host/build/scope_bench` runs the same scope on the PC and prints the same timing line.
 
 If it does not boot (black screen, no LED blink): connect the debugger **under reset**
 (`openocd ... -c "reset halt"` / `st-flash` with the board held in reset via the NRST pin)
