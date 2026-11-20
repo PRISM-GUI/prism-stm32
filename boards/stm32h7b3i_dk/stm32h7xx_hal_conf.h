@@ -19,7 +19,7 @@
 #define HAL_MODULE_ENABLED
 #define HAL_CORTEX_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
-#define HAL_DFSDM_MODULE_ENABLED
+#define HAL_ADC_MODULE_ENABLED
 #define HAL_DMA2D_MODULE_ENABLED
 #define HAL_EXTI_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
@@ -29,8 +29,6 @@
 #define HAL_MDMA_MODULE_ENABLED
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
-#define HAL_SAI_MODULE_ENABLED
-#define HAL_I2S_MODULE_ENABLED
 #define HAL_SDRAM_MODULE_ENABLED
 #define HAL_TIM_MODULE_ENABLED
 
@@ -151,19 +149,10 @@
  #include "stm32h7xx_hal_tim.h"
 #endif /* HAL_TIM_MODULE_ENABLED */
 
-/* Audio in (the audio scope): the DFSDM reads the MEMS microphones; ST's audio BSP also
-   compiles its SAI and I2S paths (the codec, unused here). */
-#ifdef HAL_DFSDM_MODULE_ENABLED
- #include "stm32h7xx_hal_dfsdm.h"
-#endif /* HAL_DFSDM_MODULE_ENABLED */
-
-#ifdef HAL_SAI_MODULE_ENABLED
- #include "stm32h7xx_hal_sai.h"
-#endif /* HAL_SAI_MODULE_ENABLED */
-
-#ifdef HAL_I2S_MODULE_ENABLED
- #include "stm32h7xx_hal_i2s.h"
-#endif /* HAL_I2S_MODULE_ENABLED */
+/* The audio scope's input: the ADC on Arduino A0 (boards/stm32h7b3i_dk/adc_source.cpp). */
+#ifdef HAL_ADC_MODULE_ENABLED
+ #include "stm32h7xx_hal_adc.h"
+#endif /* HAL_ADC_MODULE_ENABLED */
 
 /* Exported macro ------------------------------------------------------------*/
 #ifdef  USE_FULL_ASSERT

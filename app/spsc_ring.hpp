@@ -1,6 +1,6 @@
 #pragma once
 
-// A lock-free single-producer single-consumer ring of samples: the microphone's DMA interrupt
+// A lock-free single-producer single-consumer ring of samples: the ADC's DMA interrupt
 // pushes, the logic thread pops. Neither side blocks or allocates, so the producer may be an
 // interrupt handler. Holds N - 1 items (one slot tells full from empty).
 

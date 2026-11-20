@@ -47,10 +47,6 @@ void ScopeModel::view(prism::app::WidgetTree::ViewBuilder &vb)
             vb.gap(12.f);
             vb.widget(fit);
             vb.gap(12.f);
-            if (stereo) {
-                vb.widget(second_mic);
-                vb.gap(12.f);
-            }
             vb.widget(gain);
         });
         vb.hstack([&] {
@@ -100,10 +96,6 @@ bool AudioScope::drain_source()
 
 void AudioScope::tick()
 {
-    if (const bool second = model_.second_mic.get().checked; second != shown_second_mic_) {
-        shown_second_mic_ = second;
-        source_.select_channel(second ? 1 : 0);
-    }
     const bool fresh = drain_source();
     const double gain = model_.gain.get().value;
     const bool db = model_.db_scale.get().checked;
@@ -156,7 +148,7 @@ void AudioScope::show_stats(std::string_view line)
     show_level();
 }
 
-// "PRISM · mic · 16000 S/s · dc +0.01 · peak -42 dBFS": what arrived since the last report. The
+// "PRISM · A0 · 16000 S/s · dc +0.01 · peak -42 dBFS": what arrived since the last report. The
 // DC level tells a stuck input (a data line held high reads +1) from a quiet one.
 void AudioScope::show_level()
 {

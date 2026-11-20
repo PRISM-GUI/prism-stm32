@@ -57,15 +57,6 @@ CMSIS-DSP's real FFT:
 
     git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP third_party/CMSIS-DSP
 
-ST's audio BSP also needs the CS42L51 codec driver at the commit STM32CubeH7 pins (the
-latest release renamed constants the BSP uses), and its `"../Common/audio.h"` include needs a
-`BSP/Common` link in the Cube layout:
-
-    git clone https://github.com/STMicroelectronics/stm32-cs42l51 third_party/stm32-cs42l51
-    git -C third_party/stm32-cs42l51 checkout a87f2621eec27f368026e91ce07c4c65c2e0955c
-    ln -s ../../../../stm32-cs42l51 third_party/st/Drivers/BSP/Components/cs42l51
-    ln -s Components/Common third_party/st/Drivers/BSP/Common
-
 ## QEMU board support and the test firmwares (mps2-an500)
 
 `boards/qemu_mps2/` is the board support for QEMU's MPS2-AN500 board (Cortex-M7), shared by
@@ -147,13 +138,18 @@ input).
 The firmware runs one of two examples, chosen with the meson option `example`
 (`meson configure build -Dexample=scope` or `widgets`):
 
-- **scope** (the default): the audio scope. The title says where the samples come from:
-  "mic" (the board's MEMS microphone 1, 16 kHz) or "synthetic" (a 200 Hz to 4 kHz sweep, used
-  when the microphones do not start, and always in Renode). Left: the last 20 ms of samples;
-  right: the spectrum, 0 to 8 kHz. "freeze" stops the plots, "dB" switches the spectrum's
-  scale, "gain" scales both. Whistling should move the spectrum's peak. The bottom line is the
-  timing, once a second: frames per second, then per frame the snapshot build, the drawing and
-  the flip to the LCD. Those are the numbers to optimize against.
+- **scope** (the default): a scope on Arduino pin A0 (PA4, ADC1 channel 18), sampled at 16 kHz
+  by TIM3 and the DMA. 0 to 3.3 V maps to -1 to 1, so mid-supply reads 0. The board has no
+  microphones of its own (its MEMS microphones are an add-on board on the audio connector).
+  With nothing wired, A0 floats: touching it shows mains hum. The title says where the samples
+  come from ("A0", or "synthetic": a 200 Hz to 4 kHz sweep, used when the ADC does not start,
+  and always in Renode), the samples received in the last second, their DC level and peak.
+  Left: the last 20 ms; right: the spectrum, 0 to 8 kHz. "freeze" stops the plots, "dB"
+  switches the spectrum's scale, "fit" sets both plots' ranges to the signal now, "gain"
+  scales both. The bottom line, once a second: frames per second, CPU load, the C heap and
+  the RTOS heap in use, then allocations and the time per frame of each stage (the example's
+  update, the snapshot build, the drawing and the flip to the LCD). Those are the numbers to
+  optimize against.
 - **widgets**: the first demo ("PRISM on STM32H7", a counter, "+1", a checkbox, a slider).
 
 `host/build/scope_bench` runs the same scope on the PC and prints the same timing line.

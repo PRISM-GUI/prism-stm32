@@ -8,7 +8,7 @@
 #include "app/widgets_example.hpp"
 #include "app/audio_scope.hpp"
 #include "app/synthetic_source.hpp"
-#include "mic_source.hpp"
+#include "adc_source.hpp"
 
 #include "stm32h7b3i_discovery.h"
 #include "stm32h7b3i_discovery_sdram.h"
@@ -145,17 +145,17 @@ static void SystemClock_Config(void)
 
 // --- Firmware ---
 
-// The scope's samples: the microphones on the board, or the generated sweep where they do not
-// start — and always in Renode, which does not emulate the DFSDM.
+// The scope's samples: the ADC on Arduino A0, or the generated sweep where it does not start —
+// and always in Renode, which does not emulate the ADC.
 static app::SampleSource &scope_source()
 {
-    static app::SyntheticSource synthetic{MicSource::kSampleRate};
+    static app::SyntheticSource synthetic{AdcSource::kSampleRate};
 #ifdef PRISM_RENODE
     return synthetic;
 #else
-    static MicSource mic;
-    if (mic.init())
-        return mic;
+    static AdcSource adc;
+    if (adc.init())
+        return adc;
     return synthetic;
 #endif
 }

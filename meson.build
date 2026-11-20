@@ -213,20 +213,15 @@ hal_lib = static_library('stm32h7_hal', files(
     hal_dir / 'Src' / 'stm32h7xx_hal_sdram.c',
     hal_dir / 'Src' / 'stm32h7xx_ll_fmc.c',      # FMC_SDRAM_* used by the SDRAM HAL
     hal_dir / 'Src' / 'stm32h7xx_hal_mdma.c',
-    hal_dir / 'Src' / 'stm32h7xx_hal_dfsdm.c',   # audio in: the MEMS microphones
-    hal_dir / 'Src' / 'stm32h7xx_hal_dfsdm_ex.c',
-    hal_dir / 'Src' / 'stm32h7xx_hal_sai.c',     # compiled by ST's audio BSP (codec path, unused)
-    hal_dir / 'Src' / 'stm32h7xx_hal_sai_ex.c',
-    hal_dir / 'Src' / 'stm32h7xx_hal_i2s.c',
-    hal_dir / 'Src' / 'stm32h7xx_hal_i2s_ex.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_adc.c',     # the scope's input: Arduino A0
+    hal_dir / 'Src' / 'stm32h7xx_hal_adc_ex.c',
   ),
   include_directories : board_inc,
   c_args : board_defines,
 )
 
 # The BSP paths the firmware uses: LEDs, the I2C4 bus, LCD (LTDC/DMA2D/TIM2), touch, SDRAM,
-# audio in (the microphones) — not SD/camera/EEPROM/OSPI. Plus the component drivers they pull
-# in (the CS42L51 codec only because the audio BSP compiles it: third_party/stm32-cs42l51).
+# not audio/SD/camera/EEPROM/OSPI. Plus the component drivers they pull in.
 bsp_lib = static_library('stm32h7b3i_dk_bsp', files(
     st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery.c',
     st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery_bus.c',
@@ -238,9 +233,6 @@ bsp_lib = static_library('stm32h7b3i_dk_bsp', files(
     st_drivers / 'BSP' / 'Components' / 'gt911' / 'gt911.c',
     st_drivers / 'BSP' / 'Components' / 'gt911' / 'gt911_reg.c',
     st_drivers / 'BSP' / 'Components' / 'is42s16800j' / 'is42s16800j.c',
-    st_drivers / 'BSP' / 'STM32H7B3I-DK' / 'stm32h7b3i_discovery_audio.c',
-    st_drivers / 'BSP' / 'Components' / 'cs42l51' / 'cs42l51.c',
-    st_drivers / 'BSP' / 'Components' / 'cs42l51' / 'cs42l51_reg.c',
   ),
   include_directories : board_inc,
   c_args : board_defines,
@@ -308,7 +300,7 @@ board_sources = files(
   'app' / 'audio_scope.cpp',
   'app' / 'spectrum.cpp',
   'app' / 'synthetic_source.cpp',
-  board_dir / 'mic_source.cpp',
+  board_dir / 'adc_source.cpp',
   board_dir / 'system_counters.cpp',
 )
 board_incs = [board_inc, freertos_board_inc, prism_inc, include_directories('.'), cmsis_dsp_inc]

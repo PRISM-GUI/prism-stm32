@@ -1,8 +1,8 @@
 #pragma once
 
-// A generated test signal for where there are no microphones (Renode, host): a sine sweeping
+// A generated test signal for where there is no ADC input (Renode, host): a sine sweeping
 // 200 Hz -> 4 kHz over 5 s, repeating, amplitude 0.5, plus a little noise. It produces as
-// many samples as real time has elapsed, like a microphone would.
+// many samples as real time has elapsed, like the ADC would.
 
 #include "app/sample_source.hpp"
 

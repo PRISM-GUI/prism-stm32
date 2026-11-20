@@ -1,6 +1,6 @@
 #pragma once
 
-// A stream of mono audio samples in [-1, 1] at a fixed rate: the board's microphones, or a
+// A stream of mono samples in [-1, 1] at a fixed rate: the board's ADC on Arduino A0, or a
 // generated signal where there are none (Renode, host).
 
 #include <cstddef>
@@ -13,10 +13,7 @@ struct SampleSource {
     // returns how many.
     virtual std::size_t read(std::span<float> out) = 0;
     virtual float sample_rate() const = 0;
-    virtual const char *name() const = 0; // shown in the title: "mic", "synthetic"
-    // A source with several inputs (the board's two microphones) reads one at a time.
-    virtual int channel_count() const { return 1; }
-    virtual void select_channel(int /*channel*/) {}
+    virtual const char *name() const = 0; // shown in the title: "A0", "synthetic"
     virtual ~SampleSource() = default;
 };
 
