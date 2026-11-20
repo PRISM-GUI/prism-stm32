@@ -125,7 +125,8 @@ if it refuses, use the OpenOCD alternative:)
         -c "program build-local/stm32h7b3i_dk.elf verify reset exit"
 
 What to expect: LED2 (blue, PG2) blinks ~2 Hz from the idle hook even if the screen stays
-black; the LCD shows the demo UI (dark background, "PRISM on STM32H7", a counter, a "+1"
+black; LED3 (red) lit means the touch controller did not answer (the screen still runs, without
+input); the LCD shows the demo UI (dark background, "PRISM on STM32H7", a counter, a "+1"
 button, an "enabled" checkbox, a volume slider); touching "+1" increments the counter, the
 checkbox toggles, the slider drags.
 

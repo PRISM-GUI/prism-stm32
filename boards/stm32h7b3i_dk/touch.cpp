@@ -11,11 +11,14 @@ bool Touch::init()
     ts_init.Height      = Display::kHeight;
     ts_init.Orientation = TS_SWAP_NONE;
     ts_init.Accuracy    = 2;
-    return BSP_TS_Init(0, &ts_init) == BSP_ERROR_NONE;
+    ready_ = BSP_TS_Init(0, &ts_init) == BSP_ERROR_NONE;
+    return ready_;
 }
 
 std::optional<prism::core::Point> Touch::read()
 {
+    if (!ready_)
+        return std::nullopt;
     TS_State_t state = {};
     if (BSP_TS_GetState(0, &state) != BSP_ERROR_NONE || state.TouchDetected == 0U)
         return std::nullopt;

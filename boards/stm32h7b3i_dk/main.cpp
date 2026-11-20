@@ -152,14 +152,18 @@ static void app_task(void *)
     // Static so they live for the whole app (run() never returns).
     static Display display;
     static Touch touch;
-    if (!display.init() || !touch.init())
+    if (!display.init())
     {
-        // No screen or no touch: park here; LED2 still blinks from the idle hook.
+        // No screen: park here; LED2 still blinks from the idle hook.
         for (;;)
         {
             __asm volatile ("wfi");
         }
     }
+    // A touch controller that does not answer leaves the app running without input, so the
+    // screen still shows that PRISM runs; LED3 lit says touch is missing.
+    if (!touch.init())
+        BSP_LED_On(LED3);
     app::run(display, touch);
 }
 
@@ -181,6 +185,7 @@ extern "C" int main(void)
 #endif
 
   BSP_LED_Init(LED2); /* blinks from vApplicationIdleHook */
+  BSP_LED_Init(LED3); /* red: lit when the touch controller does not answer */
 
   xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: app::run's pthreads come from the heap */
   vTaskStartScheduler();

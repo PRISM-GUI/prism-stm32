@@ -17,4 +17,7 @@ public:
     bool init();
 
     std::optional<prism::core::Point> read() override;
+
+private:
+    bool ready_ = false;   // init failed: read() reports no touch, so the screen still runs
 };

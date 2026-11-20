@@ -17,12 +17,9 @@ constexpr std::uint32_t kReloadTimeoutMs = 100;
 
 bool Display::init()
 {
-    // The framebuffers are plain SDRAM addresses, so the SDRAM must be up before the LCD
-    // (BSP_LCD_InitEx would init it itself too — re-initializing the FMC bank before any
-    // SDRAM access is harmless; doing it here gives a distinct failure point).
-    if (BSP_SDRAM_Init(0) != BSP_ERROR_NONE)
-        return false;
-
+    // The framebuffers are plain SDRAM addresses: BSP_LCD_InitEx brings the SDRAM up itself
+    // (BSP_SDRAM_Init, as ST's examples rely on) before it configures layer 0, so the SDRAM is
+    // not initialized a second time here.
     // LCD_PIXEL_FORMAT_RGB888 is the BSP's name for LTDC_PIXEL_FORMAT_ARGB8888, 4 bytes per
     // pixel — the rasterizer's Canvas format. Landscape, 480x272, layer 0 at the front buffer.
     if (BSP_LCD_InitEx(0, LCD_ORIENTATION_LANDSCAPE, LCD_PIXEL_FORMAT_RGB888, kWidth, kHeight) != BSP_ERROR_NONE)
