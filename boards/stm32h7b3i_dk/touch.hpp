@@ -1,0 +1,20 @@
+#pragma once
+
+// The board's touch panel: the FT5336 on I2C4, read by polling BSP_TS_GetState (no
+// interrupt). Implements app::TouchSource (app/runtime.hpp): read() returns the first
+// touch's position in panel pixels (0..479, 0..271 — the same coordinates the 480x272
+// framebuffer uses), or nullopt when no finger is down.
+
+#include "app/runtime.hpp"
+
+#include <optional>
+
+class Touch final : public app::TouchSource {
+public:
+    // BSP_TS_Init probes the GT911 first (I2C4 0xBA), then the FT5336 (0x70 = 7-bit 0x38);
+    // this board answers on the FT5336. Width/height 480x272, orientation TS_SWAP_NONE
+    // (see ft5336_conf.h's comment if the axes come out swapped), accuracy 2 px.
+    bool init();
+
+    std::optional<prism::core::Point> read() override;
+};

@@ -1,0 +1,25 @@
+# Headless tap test: boot, tap the "+1" button twice through the emulated FT5336, save the
+# screen. From this directory:
+#   PRISM_SCREENSHOT=/tmp/tap.png renode --disable-gui --console tap.resc
+# (needs $bin set first, like screenshot.resc; default: the Renode build in ../../../build)
+$bin ?= @../../../build-local/stm32h7b3i_dk_renode.elf
+
+mach create "h7b3"
+machine LoadPlatformDescription @stm32h7b3i_dk.repl
+sysbus LoadELF $bin
+
+emulation RunFor "00:00:03"
+# Two taps on "+1" (x 22, y 100: the button in the demo layout).
+sysbus.i2c4.touchscreen MoveTo 22 100
+sysbus.i2c4.touchscreen Press
+emulation RunFor "00:00:00.3"
+sysbus.i2c4.touchscreen Release
+emulation RunFor "00:00:00.5"
+sysbus.i2c4.touchscreen MoveTo 22 100
+sysbus.i2c4.touchscreen Press
+emulation RunFor "00:00:00.3"
+sysbus.i2c4.touchscreen Release
+emulation RunFor "00:00:00.5"
+
+python "import System; p = System.Environment.GetEnvironmentVariable('PRISM_SCREENSHOT') or 'tap.png'; System.IO.File.WriteAllBytes(p, monitor.Machine['sysbus.ltdc'].TakeScreenshot().ToPng().ToArray())"
+quit

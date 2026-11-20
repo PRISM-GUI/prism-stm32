@@ -1,0 +1,37 @@
+#pragma once
+
+// The board's display: the RK043FN48H 480x272 LCD driven by the LTDC, with double buffering
+// in SDRAM (0xD0000000 front = LCD_LAYER_0_ADDRESS where BSP_LCD_InitEx puts layer 0, and
+// 0xD0080000 back — 480*272*4 = 522240 bytes each). Implements app::FrameSink (app/runtime.hpp):
+// the render thread draws into back(), then present() flips the LTDC layer to it.
+
+#include "app/runtime.hpp"
+
+#include <cstdint>
+
+class Display final : public app::FrameSink {
+public:
+    static constexpr int kWidth = 480;
+    static constexpr int kHeight = 272;
+
+    // SDRAM first (the framebuffers live there), then the LCD: LTDC + layer 0 at the front
+    // buffer, ARGB8888 (BSP_LCD_InitEx's LCD_PIXEL_FORMAT_RGB888 maps to LTDC ARGB8888),
+    // backlight and display enable on (BSP_LCD_InitEx asserts the pins; BSP_LCD_DisplayOn
+    // sets the DISP pin). False on failure — the caller parks.
+    bool init();
+
+    // The back buffer, as ARGB8888 pixels (the rasterizer's Canvas format), stride = width.
+    std::span<std::uint32_t> back() override;
+
+    // Clean the D-cache for the back buffer, point LTDC layer 0 at it (no reload yet),
+    // request a vertical-blanking reload, wait for the reload flag to clear (with a
+    // timeout), then swap front/back.
+    void present() override;
+
+private:
+#ifdef PRISM_RENODE
+    void fit_active_width_to_layer();
+#endif
+    std::uint32_t front_ = 0xD0000000;
+    std::uint32_t back_ = 0xD0080000;
+};

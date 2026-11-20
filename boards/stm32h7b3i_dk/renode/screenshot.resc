@@ -1,0 +1,31 @@
+# Headless check of the same firmware in Renode: run N virtual seconds, save the LTDC
+# framebuffer as a PNG, quit. From the repo root:
+#
+#   renode boards/stm32h7b3i_dk/renode/screenshot.resc
+#   (seconds and output: renode -e '$secs = "10" -e '$out = "@out.png"' ... )
+#
+$bin ?= @../../../build-local/stm32h7b3i_dk_renode.elf
+$secs ?= "5"
+
+mach create "h7b3"
+machine LoadPlatformDescription @stm32h7b3i_dk.repl
+sysbus LoadELF $bin
+
+emulation RunFor $secs
+
+# Save the frame the LTDC is showing: TakeScreenshot() returns a RawImageData, whose ToPng()
+# gives the PNG as a MemoryStream (Renode 1.17).
+# Renode does not expand $variables inside the python string: the path comes from the
+# environment instead (PRISM_SCREENSHOT, default screenshot.png in Renode's working directory).
+python "import System; p = System.Environment.GetEnvironmentVariable('PRISM_SCREENSHOT') or 'screenshot.png'; System.IO.File.WriteAllBytes(p, monitor.Machine['sysbus.ltdc'].TakeScreenshot().ToPng().ToArray())"
+
+quit
+
+# Injecting a touch headlessly: list the FT5336 model's methods in the monitor first
+#   (monitor) help sysbus.touchscreen
+# then call the one that reports a touch at (x, y), e.g. from a macro:
+#   macro tap
+#   """
+#       sysbus.touchscreen <method> $1 $2
+#   """
+# With the GUI (run.resc) the mouse on the ltdc analyzer window does this already.

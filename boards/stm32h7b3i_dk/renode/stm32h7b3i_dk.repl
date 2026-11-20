@@ -1,0 +1,35 @@
+using "platforms/cpus/stm32h7.repl"
+
+// STM32H7B3I-DK over the generic STM32H7 cpu description (platforms/cpus/stm32h7.repl):
+//
+//  - AXI SRAM is 1 MiB on the H7B3 (the cpu repl declares 512 KiB):
+axiSram:
+    size: 0x100000
+
+//  - Flash is already 2 MiB in the cpu repl (two 1 MiB banks: flashBank1 @ 0x08000000,
+//    flashBank2 @ 0x08100000, both behind the STM32H7 flash controller), which matches
+//    the H7B3LIH; the linker script's FLASH region (2 MiB at 0x08000000) spans both.
+//
+//  - The board's HSE is 24 MHz (only used if the firmware configures clocks; the Renode
+//    build skips SystemClock_Config, so the emulated CPU stays on the reset clock):
+rcc:
+    hseFrequency: 24_000_000
+
+//  - The touch panel: FT5336 on I2C4 (the board's touch bus, PD12/PD13 AF4) at 7-bit
+//    address 0x38, reporting the RK043FN48H panel's 480x272. Its interrupt line is PH2
+//    (TS_INT_PIN), i.e. EXTI line 2 -> EXTI2_IRQn (the cpu repl wires exti line 2 to
+//    nvic@8). The firmware polls the touch, so the line is not needed, but wired anyway.
+//    With the GUI (run.resc), the mouse on the `showAnalyzer sysbus.ltdc` window drives
+//    this model. `isRotated` left at its default: if the emulated touch axes come out
+//    swapped vs. the framebuffer, set `isRotated: true` here and/or flip the TS_SWAP_*
+//    bits in boards/stm32h7b3i_dk/touch.cpp.
+touchscreen: Input.FT5336 @ i2c4 0x38
+    MaxX: 480
+    MaxY: 272
+    -> gpioPortH@2
+
+//  - What the HAL init polls that the cpu repl already covers: PWR (Python stub with
+//    ACTVOSRDY/VOSRDY set — ExitRun0Mode and the voltage-scaling wait pass), RCC (modeled),
+//    FMC (Python stub; BSP_SDRAM_Init's register writes are absorbed), LTDC, TIM6, I2C4,
+//    DMA2D, GPIO ports, EXTI, SYSCFG, the flash controller. SDRAM bank 2 at 0xD0000000
+//    (16 MiB) is where the LTDC framebuffers live.

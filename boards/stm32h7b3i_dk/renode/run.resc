@@ -1,0 +1,16 @@
+# Run the STM32H7B3I-DK firmware in Renode, with the GUI: the LTDC analyzer window is the
+# board's screen, and the mouse on it drives the FT5336 touchscreen. From the repo root:
+#
+#   renode boards/stm32h7b3i_dk/renode/run.resc
+#   (or pass another ELF: renode -e '$bin = @path/to.elf' boards/stm32h7b3i_dk/renode/run.resc)
+#
+$bin ?= @../../../build-local/stm32h7b3i_dk_renode.elf
+
+mach create "h7b3"
+machine LoadPlatformDescription @stm32h7b3i_dk.repl
+sysbus LoadELF $bin
+
+# The "emulator screen": the LTDC reads layer 0's framebuffer from SDRAM (0xD0000000/0xD0080000).
+showAnalyzer sysbus.ltdc
+
+start

@@ -21,8 +21,20 @@ as-is; everything board-specific lives here.
 4. **PRISM's core runs in QEMU** (`tests/prism_qemu/`, `prism_tests.elf`): a model with a
    hand-written `view()`, a `WidgetTree`, `build_snapshot(480, 272, v)` — geometry, draw
    commands, text; 100 publishes timed; a second thread publishing amid malloc churn.
-5. Still to do: a DrawList rasterizer into the LTDC framebuffer, touch input, and the board
-   bring-up from ST's STM32CubeH7 BSP.
+5. **A software rasterizer for PRISM snapshots** (`raster/`): a `Canvas` over an ARGB8888
+   pixel span (the LTDC framebuffer format), embedded TTF fonts as the text measurer
+   (`raster::Fonts`, so layout and drawing agree), and `raster::draw()` painting a
+   `SceneSnapshot`. Tested on the host (`host/`) and in QEMU.
+6. **The STM32H7B3I-DK board** (`boards/stm32h7b3i_dk/`, `app/`): ST's HAL + BSP bring-up
+   (SDRAM, LTDC LCD with double buffering in SDRAM, FT5336 touch on I2C4, LED), FreeRTOS
+   with the HAL tick on TIM6, and the demo app — a logic thread polling touch and routing
+   it through `WidgetTree`'s input path, a render thread rasterizing snapshots into the
+   back buffer and flipping the LTDC layer at vblank. Built as `stm32h7b3i_dk.elf`
+   (+ `stm32h7b3i_dk.bin`, size report) and `stm32h7b3i_dk_renode.elf` for Renode
+   (`boards/stm32h7b3i_dk/renode/`). See "Run it without the board" and "Flash the board"
+   below, and docs/board-bringup.md for the bring-up notes (what was unsure, and why).
+   **Tested in Renode** (boots, draws, two taps on "+1" make the counter read 2);
+   **not yet on the real board**.
 
 ## How it got here
 
@@ -64,3 +76,63 @@ Run:
 Exit codes: 0 = all tests passed; 1..N = that many test failures; 90 = configASSERT,
 91 = malloc-failed hook, 93 = stack overflow, 94 = unexpected exception, 99 = watchdog
 (20 s for the posix tests, 60 s for the PRISM tests).
+
+The board firmwares build in the same `build/`:
+
+    scripts/remote.sh 'meson setup build --cross-file cross/stm32h7.ini -Dprism_dir=$HOME/PRSIM && ninja -C build'
+    # -> build/stm32h7b3i_dk.elf, build/stm32h7b3i_dk.bin, build/stm32h7b3i_dk.size.txt,
+    #    build/stm32h7b3i_dk_renode.elf
+
+## Run it without the board (Renode)
+
+The same firmware runs in [Renode](https://renode.io) 1.17 (portable build in `~/opt/renode`),
+with an emulated LCD and touchscreen. `boards/stm32h7b3i_dk/renode/stm32h7b3i_dk.repl` is the
+board: Renode's `stm32h7.repl` plus 1 MiB AXI SRAM and the FT5336 touch on I2C4 at 0x38.
+
+First copy the firmware from the Coder workspace (it is built there):
+
+    scripts/fetch-firmware.sh          # -> build-local/
+
+Then, from `boards/stm32h7b3i_dk/renode/`:
+
+    ~/opt/renode/renode run.resc        # a window is the screen; the mouse is your finger
+    PRISM_SCREENSHOT=/tmp/shot.png ~/opt/renode/renode --disable-gui --console screenshot.resc
+    PRISM_SCREENSHOT=/tmp/tap.png  ~/opt/renode/renode --disable-gui --console tap.resc
+
+`screenshot.resc` runs 5 emulated seconds and saves the screen; `tap.resc` taps "+1" twice
+through the emulated touch controller and saves the screen (the counter then shows 2).
+docs/renode-boot.png and docs/renode-tap.png are what they produced on 2026-11-20.
+
+The Renode build (`stm32h7b3i_dk_renode.elf`) is the board firmware built with
+`-DPRISM_RENODE`, which changes two things:
+1. `SystemClock_Config` is skipped: Renode does not model the H7 clock tree and the SMPS
+   ready flags, so the emulated chip runs on its reset clock (HSI 64 MHz).
+2. The LTDC active width is narrowed to the layer's 480 pixels: ST's timings for this panel
+   give a 491-pixel active area around the layer, and Renode's LTDC model reads the
+   framebuffer with the active width as its line length (a sheared picture otherwise).
+
+## Flash the board
+
+The image is raw binary at 0x08000000 (the vector table is the first thing in flash):
+
+    scripts/fetch-firmware.sh
+    st-flash --reset write build-local/stm32h7b3i_dk.bin 0x08000000
+
+(I am not sure stlink 1.8's `st-flash` handles the H7B3's flash controller unlock sequence —
+if it refuses, use the OpenOCD alternative:)
+
+    openocd -f interface/stlink.cfg -f target/stm32h7x.cfg \
+        -c "program build-local/stm32h7b3i_dk.elf verify reset exit"
+
+What to expect: LED2 (blue, PG2) blinks ~2 Hz from the idle hook even if the screen stays
+black; the LCD shows the demo UI (dark background, "PRISM on STM32H7", a counter, a "+1"
+button, an "enabled" checkbox, a volume slider); touching "+1" increments the counter, the
+checkbox toggles, the slider drags.
+
+If it does not boot (black screen, no LED blink): connect the debugger **under reset**
+(`openocd ... -c "reset halt"` / `st-flash` with the board held in reset via the NRST pin)
+and check `build/stm32h7b3i_dk.size.txt` — the .bss (FreeRTOS's 384 KiB heap_4 is in it)
+plus the newlib heap must fit the 1 MiB AXI SRAM. The power supply must be **direct SMPS**
+(the build defines `USE_PWR_DIRECT_SMPS_SUPPLY`, as ST's .cproject for this board does): a
+wrong supply mode can lock the chip until a power-on reset. A power cycle (unplug/replug)
+clears it.
