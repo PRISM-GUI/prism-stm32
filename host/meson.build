@@ -29,17 +29,6 @@ prism = subproject('prism', default_options : ['sdl=disabled', 'http=disabled', 
 prism_core_dep = prism.get_variable('prism_core_dep')
 prism_raster_dep = prism.get_variable('prism_raster_dep')
 prism_platform_dep = prism.get_variable('prism_platform_dep')
-# libprism is built with -freflection when the compiler has it and with the debug tools outside
-# release builds, but PRISM adds both flags to its own project only. Code including its headers
-# must see the same ones: they change what the headers declare (WidgetTree's and Node's members),
-# so a mismatch crashes.
-# simplify: until prism_headers_dep carries these flags itself; drop this then.
-if prism.get_variable('has_reflection')
-  add_project_arguments('-freflection', language : 'cpp')
-endif
-if prism.get_variable('debug_tools_enabled')
-  add_project_arguments('-DPRISM_DEBUG_TOOLS_ENABLED', language : 'cpp')
-endif
 doctest_dep = dependency('doctest', fallback : ['doctest', 'doctest_dep'])
 
 # CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2), portable C on the host: the same FFT
