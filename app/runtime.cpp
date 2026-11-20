@@ -111,6 +111,15 @@ void publish(WidgetTree &tree, Handoff &h, std::uint64_t version,
     h.cv.notify_one();
 }
 
+// True while the render thread has not taken the last snapshot yet. Building another one then
+// would only replace it unseen: wasted time and allocations. The tree stays dirty, so a later
+// loop builds the snapshot once the render thread is ready.
+bool snapshot_waiting(Handoff &h)
+{
+    std::lock_guard lock{h.mu};
+    return h.pending != nullptr;
+}
+
 // Shows the timing line once a second (the render thread fed the frames into h.stats).
 void report_stats(Handoff &h, Example &example)
 {
@@ -142,7 +151,7 @@ void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
         example->tick();
         const auto update_time = since(update_start);
         report_stats(h, *example);
-        if (tree.any_dirty())
+        if (tree.any_dirty() && !snapshot_waiting(h))
             publish(tree, h, ++version, update_time);
         std::this_thread::sleep_for(kPollPeriod);
     }
