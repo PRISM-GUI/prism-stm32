@@ -1,0 +1,30 @@
+# Headless widget test: tap the checkbox, drag the slider, save the screen. From this
+# directory:
+#   PRISM_SCREENSHOT=/tmp/widgets.png renode --disable-gui --console widgets.resc
+# Expected: "enabled" unchecked, volume about 0.86 (docs/renode-widgets.png).
+$bin ?= @../../../build-local/stm32h7b3i_dk_renode.elf
+
+mach create "h7b3"
+machine LoadPlatformDescription @stm32h7b3i_dk.repl
+sysbus LoadELF $bin
+
+emulation RunFor "00:00:03"
+sysbus.i2c4.touchscreen MoveTo 80 100
+sysbus.i2c4.touchscreen Press
+emulation RunFor "00:00:00.3"
+sysbus.i2c4.touchscreen Release
+emulation RunFor "00:00:00.5"
+sysbus.i2c4.touchscreen MoveTo 240 162
+sysbus.i2c4.touchscreen Press
+emulation RunFor "00:00:00.2"
+sysbus.i2c4.touchscreen MoveTo 300 162
+emulation RunFor "00:00:00.2"
+sysbus.i2c4.touchscreen MoveTo 360 162
+emulation RunFor "00:00:00.2"
+sysbus.i2c4.touchscreen MoveTo 400 162
+emulation RunFor "00:00:00.3"
+sysbus.i2c4.touchscreen Release
+emulation RunFor "00:00:00.5"
+
+python "import System; p = System.Environment.GetEnvironmentVariable('PRISM_SCREENSHOT') or 'widgets.png'; System.IO.File.WriteAllBytes(p, monitor.Machine['sysbus.ltdc'].TakeScreenshot().ToPng().ToArray())"
+quit

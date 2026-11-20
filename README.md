@@ -100,8 +100,9 @@ Then, from `boards/stm32h7b3i_dk/renode/`:
     PRISM_SCREENSHOT=/tmp/tap.png  ~/opt/renode/renode --disable-gui --console tap.resc
 
 `screenshot.resc` runs 5 emulated seconds and saves the screen; `tap.resc` taps "+1" twice
-through the emulated touch controller and saves the screen (the counter then shows 2).
-docs/renode-boot.png and docs/renode-tap.png are what they produced on 2026-11-20.
+through the emulated touch controller (the counter then shows 2); `widgets.resc` taps the
+checkbox and drags the slider (unchecked, volume about 0.86). docs/renode-boot.png,
+docs/renode-tap.png and docs/renode-widgets.png are what they produced on 2026-11-20.
 
 The Renode build (`stm32h7b3i_dk_renode.elf`) is the board firmware built with
 `-DPRISM_RENODE`, which changes one thing: the LTDC active width is narrowed to the layer's 480
