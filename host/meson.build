@@ -151,3 +151,13 @@ test('test_raster_allocations', executable('test_raster_allocations',
   link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
   dependencies : deps + [doctest_dep],
 ))
+
+# Diagnostic: where one snapshot build allocates (host/alloc_sites.cpp). Linked -no-pie so
+# addr2line can name the recorded return addresses.
+executable('alloc_sites', files('alloc_sites.cpp'),
+  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
+  cpp_args : cmsis_dsp_host_args,
+  link_args : ['-no-pie'],
+  link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
+  dependencies : deps,
+)
