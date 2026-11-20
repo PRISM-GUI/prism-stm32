@@ -1,5 +1,9 @@
 # PRISM on the STM32H7B3I-DK: board firmware + the same firmware in Renode
 
+(History: the bring-up notes as written. Since then the runtime, the rasterizer and the POSIX
+layer have moved into PRISM, `app/demo.hpp` became `app/widgets_app.hpp`, and the build takes
+PRISM as a subproject, without `-Dprism_dir`: README.md is current.)
+
 Work done in `/home/jeandet/Documents/prog/prism-stm32` (no commits; PRSIM untouched).
 No shell in this session — only read/edit/write — so **nothing was built or run here**; the
 controller builds, runs Renode and flashes the board. Everything below about behaviour is

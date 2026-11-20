@@ -4,7 +4,7 @@
 /* FreeRTOS config for the STM32H7B3I-DK board (Cortex-M7, 280 MHz on the real board,
    64 MHz HSI after reset in Renode — see PRISM_RENODE in main.cpp). This file lives with
    the board support in boards/stm32h7b3i_dk/ — another board gets its own config
-   (boards/qemu_mps2/ has the QEMU one). */
+   (PRISM's ports/qemu_mps2/ has the QEMU one). */
 
 #define configUSE_PREEMPTION                    1
 #define configUSE_TIME_SLICING                  1
@@ -55,9 +55,9 @@ extern uint32_t SystemCoreClock;
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_TRACE_FACILITY                0
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
-/* Run-time stats in microseconds (posix/posix_time.c), for the timing line's CPU load: the
-   idle task's share of each second (boards/stm32h7b3i_dk/system_counters.cpp). 64-bit so it
-   never wraps. */
+/* Run-time stats in microseconds (PRISM's ports/freertos/posix_time.c), for the timing line's
+   CPU load: the idle task's share of each second (PRISM's ports/freertos/system_counters.cpp).
+   64-bit so it never wraps. */
 #define configGENERATE_RUN_TIME_STATS           1
 #define configRUN_TIME_COUNTER_TYPE             uint64_t
 #ifndef __ASSEMBLER__
@@ -72,7 +72,7 @@ uint64_t prism_now_us(void);
 
 /* newlib thread safety: same as the QEMU board — each task's TCB embeds a struct _reent
    (include/newlib-freertos.h) and vTaskSwitchContext points newlib's _impure_ptr at the
-   running task's copy; posix/newlib_locks.c provides the retargetable locks. */
+   running task's copy; PRISM's ports/freertos/newlib_locks.c provides the retargetable locks. */
 #define configUSE_NEWLIB_REENTRANT              1
 
 /* Raw NVIC priority register values. The STM32H7 implements 4 priority bits

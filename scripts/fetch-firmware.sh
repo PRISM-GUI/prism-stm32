@@ -6,6 +6,5 @@ cd "$(dirname "$0")/.." || exit 1
 mkdir -p build-local
 rsync -a -e coder-rsh \
     prism:prism-stm32/build/stm32h7b3i_dk.elf prism:prism-stm32/build/stm32h7b3i_dk.bin \
-    prism:prism-stm32/build/stm32h7b3i_dk_renode.elf \
-    prism:prism-stm32/build/posix_tests.elf prism:prism-stm32/build/prism_tests.elf build-local/
+    prism:prism-stm32/build/stm32h7b3i_dk_renode.elf build-local/
 ls -la build-local

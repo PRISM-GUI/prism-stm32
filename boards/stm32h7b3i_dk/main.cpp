@@ -1,14 +1,17 @@
 // STM32H7B3I-DK firmware entry point: board bring-up (MPU, caches, HAL, clocks), the user
-// LED, then one FreeRTOS task that runs the PRISM demo app (app::run) — a logic thread and
-// a render thread on top of it. Built twice: stm32h7b3i_dk.elf for the real board, and
-// stm32h7b3i_dk_renode.elf (-DPRISM_RENODE) for Renode, which only differs in display.cpp.
-#include "app/runtime.hpp"
+// LED, then one FreeRTOS task that runs a PRISM app through PRISM's frame runtime
+// (frame_app) — a logic thread and a render thread on top of it. Built twice: stm32h7b3i_dk.elf
+// for the real board, and stm32h7b3i_dk_renode.elf (-DPRISM_RENODE) for Renode, which only
+// differs in display.cpp.
 #include "display.hpp"
 #include "touch.hpp"
-#include "app/widgets_example.hpp"
+#include "app/widgets_app.hpp"
 #include "app/audio_scope.hpp"
 #include "app/synthetic_source.hpp"
 #include "adc_source.hpp"
+
+#include <prism/platform/alloc_count.hpp>
+#include <prism/platform/frame_app.hpp>
 
 #include "stm32h7b3i_discovery.h"
 #include "stm32h7b3i_discovery_sdram.h"
@@ -160,20 +163,38 @@ static app::SampleSource &scope_source()
 #endif
 }
 
-// The example this firmware runs, chosen at build time (meson option `example`).
-static app::ExampleFactory make_example()
+// The allocation guard (meson option `alloc_guard`), armed at the first timing line: startup
+// is over by then. PRISM's runtime arms it itself only when PRISM is built with the define.
+static void arm_allocation_guard([[maybe_unused]] prism::platform::FrameContext &ctx)
 {
+#ifdef PRISM_ALLOC_GUARD
+    ctx.on_stats([](std::string_view) { prism_allocation_guard_arm(); });
+#endif
+}
+
+// Runs the example this firmware was built with (meson option `example`); returns if it quits.
+static void run_example(Display &display, Touch &touch)
+{
+    using prism::platform::FrameContext;
 #ifdef PRISM_EXAMPLE_SCOPE
-    app::SampleSource &source = scope_source();
-    return [&source] { return app::make_scope_example(source); };
+    static app::ScopeModel model;
+    static app::ScopeState state{scope_source()};
+    prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
+        app::attach_scope(ctx, model, state);
+        arm_allocation_guard(ctx);
+    });
 #else
-    return app::make_widgets_example;
+    static app::WidgetsModel model;
+    prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
+        app::attach_widgets(ctx, model);
+        arm_allocation_guard(ctx);
+    });
 #endif
 }
 
 static void app_task(void *)
 {
-    // Static so they live for the whole app (run() never returns).
+    // Static so they live for the whole app.
     static Display display;
     static Touch touch;
     if (!display.init())
@@ -188,7 +209,12 @@ static void app_task(void *)
     // screen still shows that PRISM runs; LED3 lit says touch is missing.
     if (!touch.init())
         BSP_LED_On(LED3);
-    app::run(display, touch, make_example());
+    run_example(display, touch);
+    // A FreeRTOS task must not return.
+    for (;;)
+    {
+        __asm volatile ("wfi");
+    }
 }
 
 extern "C" int main(void)
@@ -209,7 +235,7 @@ extern "C" int main(void)
   BSP_LED_Init(LED2); /* blinks from vApplicationIdleHook */
   BSP_LED_Init(LED3); /* red: lit when the touch controller does not answer */
 
-  xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: app::run's pthreads come from the heap */
+  xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: frame_app's pthreads come from the heap */
   vTaskStartScheduler();
 
   for (;;)

@@ -7,7 +7,8 @@
 // With nothing wired to A0 the input floats: touching it shows mains hum (50 or 60 Hz).
 
 #include "app/sample_source.hpp"
-#include "app/spsc_ring.hpp"
+
+#include <prism/dev/spsc_ring.hpp>
 
 class AdcSource final : public app::SampleSource {
 public:
@@ -25,5 +26,5 @@ public:
     void push(std::span<const float> samples) { ring_.push(samples); }
 
 private:
-    app::SpscRing<float, 4096> ring_; // 256 ms at 16 kHz: the logic thread drains every ~16 ms
+    prism::dev::SpscRing<float, 4096> ring_; // 256 ms at 16 kHz: the logic thread drains every ~16 ms
 };

@@ -1,6 +1,6 @@
 /* STM32H7B3I-DK (STM32H7B3LIHxQ) linker script.
 
-   From ST's STM32H7B3LIHXQ_FLASH.ld, plus what boards/qemu_mps2/mps2_an500.ld added for us:
+   From ST's STM32H7B3LIHXQ_FLASH.ld, plus what PRISM's ports/qemu_mps2/mps2_an500.ld adds:
    the EXTERN list of posix symbols (gthr-posix references them weakly, so --gc-sections
    would drop them), .tdata/.tbss with their symbols, KEEP(.init/.fini), .eh_frame kept,
    and the init/fini arrays.
@@ -127,8 +127,8 @@ SECTIONS
         _edata = .;
     } > RAM AT> FLASH
 
-    /* TLS template: copied per thread by posix/tls.c from its load image (_tdata_lma),
-       so the startup does not copy it (the CMSIS startup only copies .data). */
+    /* TLS template: copied per thread by PRISM's ports/freertos/tls.c from its load image
+       (_tdata_lma), so the startup does not copy it (the CMSIS startup only copies .data). */
     .tdata :
     {
         . = ALIGN(8);

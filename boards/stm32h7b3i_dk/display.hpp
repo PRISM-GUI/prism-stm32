@@ -2,14 +2,15 @@
 
 // The board's display: the RK043FN48H 480x272 LCD driven by the LTDC, with double buffering
 // in SDRAM (0xD0000000 front = LCD_LAYER_0_ADDRESS where BSP_LCD_InitEx puts layer 0, and
-// 0xD0080000 back — 480*272*4 = 522240 bytes each). Implements app::FrameSink (app/runtime.hpp):
-// the render thread draws into back(), then present() flips the LTDC layer to it.
+// 0xD0080000 back — 480*272*4 = 522240 bytes each). Implements PRISM's FrameSink
+// (prism/platform/frame_target.hpp): the render thread draws into back(), then present()
+// flips the LTDC layer to it.
 
-#include "app/runtime.hpp"
+#include <prism/platform/frame_target.hpp>
 
 #include <cstdint>
 
-class Display final : public app::FrameSink {
+class Display final : public prism::platform::FrameSink {
 public:
     static constexpr int kWidth = 480;
     static constexpr int kHeight = 272;
@@ -27,6 +28,11 @@ public:
     // request a vertical-blanking reload, wait for the reload flag to clear (with a
     // timeout), then swap front/back.
     void present() override;
+
+    prism::core::Size size() const override
+    {
+        return {prism::core::Width{float(kWidth)}, prism::core::Height{float(kHeight)}};
+    }
 
 private:
 #ifdef PRISM_RENODE

@@ -10,10 +10,6 @@
 	path = third_party/CMSIS-DSP
 	url = https://github.com/ARM-software/CMSIS-DSP.git
 	shallow = true
-[submodule "third_party/FreeRTOS-Kernel"]
-	path = third_party/FreeRTOS-Kernel
-	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
-	shallow = true
 [submodule "third_party/stm32-bsp-common"]
 	path = third_party/stm32-bsp-common
 	url = https://github.com/STMicroelectronics/stm32-bsp-common.git
@@ -41,8 +37,4 @@
 [submodule "third_party/stm32-rk043fn48h"]
 	path = third_party/stm32-rk043fn48h
 	url = https://github.com/STMicroelectronics/stm32-rk043fn48h.git
-	shallow = true
-[submodule "third_party/stb"]
-	path = third_party/stb
-	url = https://github.com/nothings/stb.git
 	shallow = true
