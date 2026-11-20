@@ -1,7 +1,7 @@
 // STM32H7B3I-DK firmware entry point: board bring-up (MPU, caches, HAL, clocks), the user
 // LED, then one FreeRTOS task that runs the PRISM demo app (app::run) — a logic thread and
 // a render thread on top of it. Built twice: stm32h7b3i_dk.elf for the real board, and
-// stm32h7b3i_dk_renode.elf (-DPRISM_RENODE) for Renode, which skips the clock setup.
+// stm32h7b3i_dk_renode.elf (-DPRISM_RENODE) for Renode, which only differs in display.cpp.
 #include "app/runtime.hpp"
 #include "display.hpp"
 #include "touch.hpp"
@@ -79,14 +79,9 @@ static void CPU_CACHE_Enable(void)
   SCB_EnableDCache();
 }
 
-#ifndef PRISM_RENODE
 /**
   * System Clock Configuration: 280 MHz from the 24 MHz HSE (verbatim from the example).
-  * Skipped when built with -DPRISM_RENODE: Renode does not model the H7 clock tree / PLL
-  * lock flags faithfully enough for this (its RCC model is functional but the PLL ready
-  * flags the HAL polls are not), so the emulated board just runs on the reset clock —
-  * HSI 64 MHz, which is also SystemCoreClock's reset value, keeping configCPU_CLOCK_HZ
-  * consistent. See .vibe-out/board.md.
+  * Renode 1.17's RCC model gets through it too (checked 2026-11-20).
   */
 static void SystemClock_Config(void)
 {
@@ -143,7 +138,6 @@ static void SystemClock_Config(void)
 
   HAL_EnableCompensationCell();
 }
-#endif /* PRISM_RENODE */
 
 // --- Firmware ---
 
@@ -179,10 +173,8 @@ extern "C" int main(void)
   /* HAL_Init starts the HAL timebase on TIM6 (FreeRTOS owns SysTick). */
   HAL_Init();
 
-#ifndef PRISM_RENODE
-  /* 280 MHz from the 24 MHz HSE (skipped in the Renode build — see above). */
+  /* 280 MHz from the 24 MHz HSE. */
   SystemClock_Config();
-#endif
 
   BSP_LED_Init(LED2); /* blinks from vApplicationIdleHook */
   BSP_LED_Init(LED3); /* red: lit when the touch controller does not answer */

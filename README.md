@@ -104,12 +104,11 @@ through the emulated touch controller and saves the screen (the counter then sho
 docs/renode-boot.png and docs/renode-tap.png are what they produced on 2026-11-20.
 
 The Renode build (`stm32h7b3i_dk_renode.elf`) is the board firmware built with
-`-DPRISM_RENODE`, which changes two things:
-1. `SystemClock_Config` is skipped: Renode does not model the H7 clock tree and the SMPS
-   ready flags, so the emulated chip runs on its reset clock (HSI 64 MHz).
-2. The LTDC active width is narrowed to the layer's 480 pixels: ST's timings for this panel
-   give a 491-pixel active area around the layer, and Renode's LTDC model reads the
-   framebuffer with the active width as its line length (a sheared picture otherwise).
+`-DPRISM_RENODE`, which changes one thing: the LTDC active width is narrowed to the layer's 480
+pixels. ST's timings for this panel give a 491-pixel active area around the layer, and
+Renode's LTDC model reads the framebuffer with the active width as its line length (a sheared
+picture otherwise). Everything else, including ST's 280 MHz clock and SMPS setup, runs as on
+the board.
 
 ## Flash the board
 
