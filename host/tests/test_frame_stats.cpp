@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>
 
+#include "app/alloc_count.hpp"
 #include "app/frame_stats.hpp"
 
 using namespace std::chrono_literals;
@@ -66,4 +67,18 @@ TEST_CASE("frame stats: the allocation counter may wrap around")
     app::FrameStats stats{start, 0xFFFFFFF0u};
     stats.add(frame(1, 1, 1, 1));
     CHECK(stats.tick(start + 1s, 0x10u)->starts_with("1 fps \u00b7 32 allocs/frame \u00b7"));
+}
+
+TEST_CASE("frame stats: the line is written into the stats' own buffer, without allocating")
+{
+    const auto start = Clock::now();
+    app::FrameStats stats{start, 0};
+    stats.add(frame(1, 2, 3, 4));
+    (void)stats.tick(start + 1s, 0);        // warm-up
+    stats.add(frame(1, 2, 3, 4));
+    const auto before = prism_allocation_count();
+    const std::optional<std::string_view> line = stats.tick(start + 2s, 0);
+    CHECK(prism_allocation_count() - before == 0);
+    REQUIRE(line.has_value());
+    CHECK(line->starts_with("1 fps"));
 }

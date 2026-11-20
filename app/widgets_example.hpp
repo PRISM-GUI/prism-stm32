@@ -21,7 +21,7 @@ public:
     prism::app::WidgetTree &tree() override { return tree_; }
     void tick() override {}
     // simplify: the widget demo has no place for the timing line; the scope shows it.
-    void show_stats(const std::string &) override {}
+    void show_stats(std::string_view) override {}
 
 private:
     DemoModel model_;

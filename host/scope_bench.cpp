@@ -57,6 +57,7 @@ int main(int argc, char **argv)
     raster::Canvas canvas{fb, W, H, W};
     app::FrameStats stats{Clock::now(), prism_allocation_count()};
 
+    prism::render::SceneSnapshot snap; // rebuilt in place every frame, as the board's slots are
     std::uint32_t allocs[3] = {}; // per stage, in the last frame: update, snapshot, draw
     for (std::uint64_t version = 1; version <= std::uint64_t(frames); ++version) {
         app::StageTimes t;
@@ -67,19 +68,19 @@ int main(int argc, char **argv)
         allocs[0] = prism_allocation_count() - count;
         count = prism_allocation_count();
         start = Clock::now();
-        auto snap = scope.tree().build_snapshot(W, H, version);
+        scope.tree().build_snapshot(snap, W, H, version);
         scope.tree().clear_dirty();
         t.snapshot = since(start);
         allocs[1] = prism_allocation_count() - count;
         count = prism_allocation_count();
         start = Clock::now();
-        canvas.clear(snap->window.background);
-        raster::draw(canvas, *snap, fonts);
+        canvas.clear(snap.window.background);
+        raster::draw(canvas, snap, fonts);
         t.draw = since(start);
         allocs[2] = prism_allocation_count() - count;
         stats.add(t);
         if (auto line = stats.tick(Clock::now(), prism_allocation_count())) {
-            std::printf("%s\n", line->c_str());
+            std::printf("%.*s\n", int(line->size()), line->data());
             scope.show_stats(*line);
         }
     }

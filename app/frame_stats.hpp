@@ -6,8 +6,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <array>
 #include <optional>
-#include <string>
+#include <string_view>
 
 namespace app {
 
@@ -26,14 +27,16 @@ public:
     void add(StageTimes t);
     // The summary of the last second once a second has passed since the previous one, then
     // starts a new second; nullopt before that. `allocations`: the running count, read now.
-    std::optional<std::string> tick(std::chrono::steady_clock::time_point now,
-                                    std::uint32_t allocations);
+    // The line lives in this object's buffer until the next tick: no allocation.
+    std::optional<std::string_view> tick(std::chrono::steady_clock::time_point now,
+                                         std::uint32_t allocations);
 
 private:
     std::chrono::steady_clock::time_point window_start_;
     std::uint32_t window_allocations_;
     StageTimes sum_{};
     int frames_ = 0;
+    std::array<char, 160> line_{};
 };
 
 } // namespace app

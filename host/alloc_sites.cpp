@@ -109,15 +109,16 @@ int main()
         void *warm[4];
         backtrace(warm, 4); // the first call loads the unwinder, which allocates
     }
-    for (std::uint64_t v = 1; v <= 10; ++v) { // warm up: caches, first layouts
+    prism::render::SceneSnapshot snap; // rebuilt in place, as the board's runtime does
+    for (std::uint64_t v = 1; v <= 10; ++v) { // warm up: caches, first layouts, capacities
         scope.tick();
-        auto snap = scope.tree().build_snapshot(480, 272, v);
+        scope.tree().build_snapshot(snap, 480, 272, v);
         scope.tree().clear_dirty();
     }
 
     scope.tick();
     g_recording = true;
-    auto snap = scope.tree().build_snapshot(480, 272, 11);
+    scope.tree().build_snapshot(snap, 480, 272, 11);
     g_recording = false;
     scope.tree().clear_dirty();
 

@@ -7,7 +7,7 @@
 
 #include <functional>
 #include <memory>
-#include <string>
+#include <string_view>
 
 namespace app {
 
@@ -16,7 +16,7 @@ struct Example {
     // Each logic-thread loop, after input and before the dirty check (e.g. pull new samples).
     virtual void tick() = 0;
     // The FrameStats line (app/frame_stats.hpp), once a second, on the logic thread.
-    virtual void show_stats(const std::string &line) = 0;
+    virtual void show_stats(std::string_view line) = 0;
     virtual ~Example() = default;
 };
 

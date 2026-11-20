@@ -37,7 +37,7 @@ public:
 
     prism::app::WidgetTree &tree() override { return tree_; }
     void tick() override;
-    void show_stats(const std::string &line) override;
+    void show_stats(std::string_view line) override;
 
     ScopeModel &model() { return model_; }
     std::span<const float> waveform() const { return waveform_; }  // what the waveform plot shows

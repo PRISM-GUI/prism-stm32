@@ -1,6 +1,6 @@
 // The demo runtime (see app/runtime.hpp). Threading model, mirroring what model_app does
 // on SDL: one thread owns the model and the WidgetTree and is the only one that sets
-// fields; the other thread only renders snapshots handed over through a mutex+shared_ptr
+// fields; the other thread only renders snapshots handed over through a mutex and a fixed set of snapshot slots (see Handoff)
 // handoff. Input goes through PRISM's public path, app::widget_detail::route_event()
 // (include/prism/app/event_routing.hpp), hit-tested against the last *shown* snapshot —
 // the same `shown` model_app's dispatch uses.
@@ -20,6 +20,7 @@
 #include "raster/draw_snapshot.hpp"
 #include "raster/fonts.hpp"
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -39,15 +40,20 @@ constexpr auto kPollPeriod = std::chrono::milliseconds(16); // ~60 Hz touch poll
 constexpr int kLogicStackBytes = 64 * 1024;
 constexpr int kRenderStackBytes = 48 * 1024;
 
-// The handoff between the two threads: `pending` is a freshly built snapshot waiting to be
-// drawn, `shown` is the one on screen (input is hit-tested against it).
+// The handoff between the two threads, over a fixed set of snapshot slots that are rebuilt in
+// place (WidgetTree::build_snapshot into a slot keeps its capacity: no allocation per frame).
+// A slot is `pending` (built, waiting to be drawn), `drawing` (the render thread reads it) or
+// `shown` (on screen: input is hit-tested against it); the logic thread builds into a slot that
+// is none of the three, so four slots always leave one free. Only the logic thread writes
+// slots, and only a free one; indices are -1 when unset and change under `mu`.
 struct Handoff {
+    static constexpr int kSlots = 4;
     std::mutex mu;
     std::condition_variable cv;
-    std::shared_ptr<const prism::render::SceneSnapshot> pending;
+    std::array<prism::render::SceneSnapshot, kSlots> slots;
+    int pending = -1, drawing = -1, shown = -1;
     std::chrono::microseconds pending_update_time{}; // the example's tick() before `pending`
     std::chrono::microseconds pending_build_time{};  // how long `pending` took to build
-    std::shared_ptr<const prism::render::SceneSnapshot> shown;
     // The timing summary: the render thread adds each finished frame, the logic thread reads
     // a line once a second. Fixed-size, so neither side allocates per frame.
     FrameStats stats{std::chrono::steady_clock::now(), prism_allocation_count()};
@@ -71,26 +77,37 @@ using prism::render::SceneSnapshot;
 void route_touch(WidgetTree &tree, Handoff &h, std::optional<Point> now,
                  std::optional<Point> &last)
 {
-    std::shared_ptr<const SceneSnapshot> snap;
+    int shown;
     {
         std::lock_guard lock{h.mu};
-        snap = h.shown;
+        shown = h.shown;
     }
-    if (!snap)
+    if (shown < 0)
         return;
+    // Read without the lock: only this (the logic) thread writes slots, and never `shown`'s.
+    const SceneSnapshot *snap = &h.slots[std::size_t(shown)];
     const auto moved = [](Point a, Point b) {
         return a.x.raw() != b.x.raw() || a.y.raw() != b.y.raw();
     };
     if (now && !last)
         prism::app::widget_detail::route_event(
-            tree, snap.get(), MouseButton{*now, prism::input::buttons::left, true});
+            tree, snap, MouseButton{*now, prism::input::buttons::left, true});
     else if (!now && last)
         prism::app::widget_detail::route_event(
-            tree, snap.get(), MouseButton{*last, prism::input::buttons::left, false});
+            tree, snap, MouseButton{*last, prism::input::buttons::left, false});
     else if (now && last && moved(*now, *last))
         prism::app::widget_detail::route_event(
-            tree, snap.get(), MouseMove{*now, prism::input::buttons::left_mask});
+            tree, snap, MouseMove{*now, prism::input::buttons::left_mask});
     last = now;
+}
+
+// A slot that is neither pending, being drawn nor shown (call with h.mu held).
+int free_slot(const Handoff &h)
+{
+    for (int i = 0; i < Handoff::kSlots; ++i)
+        if (i != h.pending && i != h.drawing && i != h.shown)
+            return i;
+    return -1; // unreachable: three indices cannot cover four slots
 }
 
 // Builds a snapshot of the tree and hands it to the render thread, with the time the example's
@@ -98,13 +115,18 @@ void route_touch(WidgetTree &tree, Handoff &h, std::optional<Point> now,
 void publish(WidgetTree &tree, Handoff &h, std::uint64_t version,
              std::chrono::microseconds update_time)
 {
+    int slot;
+    {
+        std::lock_guard lock{h.mu};
+        slot = free_slot(h);
+    }
     const auto start = Clock::now();
-    auto snap = tree.build_snapshot(kWidth, kHeight, version);
+    tree.build_snapshot(h.slots[std::size_t(slot)], kWidth, kHeight, version);
     tree.clear_dirty();
     const auto build_time = since(start);
     {
         std::lock_guard lock{h.mu};
-        h.pending = std::move(snap);
+        h.pending = slot;
         h.pending_update_time = update_time;
         h.pending_build_time = build_time;
     }
@@ -117,7 +139,7 @@ void publish(WidgetTree &tree, Handoff &h, std::uint64_t version,
 bool snapshot_waiting(Handoff &h)
 {
     std::lock_guard lock{h.mu};
-    return h.pending != nullptr;
+    return h.pending >= 0;
 }
 
 // Startup is over once the first timing line is out (a second of frames: caches and buffers
@@ -132,7 +154,7 @@ void arm_allocation_guard()
 // Shows the timing line once a second (the render thread fed the frames into h.stats).
 void report_stats(Handoff &h, Example &example)
 {
-    std::optional<std::string> line;
+    std::optional<std::string_view> line; // in h.stats' buffer: shown before the next tick
     {
         std::lock_guard lock{h.mu};
         line = h.stats.tick(Clock::now(), prism_allocation_count());
@@ -175,16 +197,16 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
     raster::Canvas canvas{sink.back(), static_cast<int>(kWidth), static_cast<int>(kHeight),
                           static_cast<int>(kWidth)};
     for (;;) {
-        std::shared_ptr<const SceneSnapshot> snap;
         StageTimes times;
         {
             std::unique_lock lock{h.mu};
-            h.cv.wait(lock, [&] { return h.pending != nullptr; });
-            snap = std::move(h.pending);
-            h.pending = nullptr;
+            h.cv.wait(lock, [&] { return h.pending >= 0; });
+            h.drawing = h.pending;
+            h.pending = -1;
             times.update = h.pending_update_time;
             times.snapshot = h.pending_build_time;
         }
+        const SceneSnapshot *snap = &h.slots[std::size_t(h.drawing)];
         canvas.retarget(sink.back());
         auto start = Clock::now();
         canvas.clear(snap->window.background); // clearing is the caller's job, as with SDL
@@ -195,7 +217,8 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
         times.present = since(start);
         {
             std::lock_guard lock{h.mu};
-            h.shown = snap;
+            h.shown = h.drawing;
+            h.drawing = -1;
             h.stats.add(times);
         }
     }
@@ -231,7 +254,7 @@ void run(FrameSink &sink, TouchSource &touch, ExampleFactory make_example)
     // glyph rasterization on the render thread; the faces are immutable and the glyph
     // cache is mutex-guarded (raster/fonts.hpp).
     raster::Fonts fonts;
-    Handoff h;
+    static Handoff h; // the snapshot slots are large for a task stack; run() never returns
     RunArgs args{&h, &sink, &touch, &fonts, &make_example};
 
     pthread_attr_t attr;

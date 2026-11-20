@@ -117,7 +117,7 @@ scope_lib = static_library('scope', files(
   dependencies : deps,
 )
 
-foreach t : ['test_spectrum', 'test_synthetic_source', 'test_frame_stats', 'test_spsc_ring']
+foreach t : ['test_spectrum', 'test_synthetic_source', 'test_spsc_ring']
   e = executable(t, files('tests' / (t + '.cpp')),
     include_directories : [repo_inc, cmsis_dsp_inc],
     cpp_args : cmsis_dsp_host_args,
@@ -161,3 +161,12 @@ executable('alloc_sites', files('alloc_sites.cpp'),
   link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
   dependencies : deps,
 )
+
+# FrameStats is checked for allocations: its test links the host's operator new counter.
+test('test_frame_stats', executable('test_frame_stats',
+  files('tests' / 'test_frame_stats.cpp', 'alloc_count_host.cpp'),
+  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
+  cpp_args : cmsis_dsp_host_args,
+  link_with : [scope_lib, cmsis_dsp],
+  dependencies : deps + [doctest_dep],
+))

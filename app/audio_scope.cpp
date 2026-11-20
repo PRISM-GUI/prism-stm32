@@ -111,11 +111,10 @@ void AudioScope::update_plots()
     shown_db_ = db;
 }
 
-void AudioScope::show_stats(const std::string &line)
+void AudioScope::show_stats(std::string_view line)
 {
-    auto label = model_.stats.get();
-    label.value = line;
-    model_.stats.set(label);
+    // In place: the label's string keeps its memory, so a new line allocates nothing.
+    model_.stats.mutate([line](prism::ui::Label<> &label) { label.value.assign(line); });
 }
 
 std::unique_ptr<Example> make_scope_example(SampleSource &source)
