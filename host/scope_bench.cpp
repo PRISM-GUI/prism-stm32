@@ -57,9 +57,11 @@ int main(int argc, char **argv)
     app::FrameStats stats{Clock::now()};
 
     for (std::uint64_t version = 1; version <= std::uint64_t(frames); ++version) {
-        scope.tick();
         app::StageTimes t;
         auto start = Clock::now();
+        scope.tick();
+        t.update = since(start);
+        start = Clock::now();
         auto snap = scope.tree().build_snapshot(W, H, version);
         scope.tree().clear_dirty();
         t.snapshot = since(start);

@@ -1,7 +1,7 @@
 #pragma once
 
 // Per-frame timing, summarized once a second into the line the examples show on screen:
-// "24 fps · snapshot 9.1 ms · draw 22.4 ms · present 0.3 ms".
+// "24 fps · update 1.20 · snapshot 9.10 · draw 22.40 · present 0.30 ms" (averages, in ms).
 
 #include <chrono>
 #include <optional>
@@ -9,9 +9,10 @@
 
 namespace app {
 
-// One finished frame: snapshot build (logic thread), draw and present (render thread).
+// One finished frame: the example's update (e.g. FFT and plot data) and the snapshot build
+// on the logic thread, then draw and present on the render thread.
 struct StageTimes {
-    std::chrono::microseconds snapshot{}, draw{}, present{};
+    std::chrono::microseconds update{}, snapshot{}, draw{}, present{};
 };
 
 class FrameStats {

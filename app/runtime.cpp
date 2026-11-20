@@ -45,7 +45,8 @@ struct Handoff {
     std::mutex mu;
     std::condition_variable cv;
     std::shared_ptr<const prism::render::SceneSnapshot> pending;
-    std::chrono::microseconds pending_build_time{}; // how long `pending` took to build
+    std::chrono::microseconds pending_update_time{}; // the example's tick() before `pending`
+    std::chrono::microseconds pending_build_time{};  // how long `pending` took to build
     std::shared_ptr<const prism::render::SceneSnapshot> shown;
     std::vector<StageTimes> finished; // frames the render thread completed, for FrameStats
 };
@@ -90,8 +91,10 @@ void route_touch(WidgetTree &tree, Handoff &h, std::optional<Point> now,
     last = now;
 }
 
-// Builds a snapshot of the tree and hands it to the render thread, with its build time.
-void publish(WidgetTree &tree, Handoff &h, std::uint64_t version)
+// Builds a snapshot of the tree and hands it to the render thread, with the time the example's
+// update took and the build time.
+void publish(WidgetTree &tree, Handoff &h, std::uint64_t version,
+             std::chrono::microseconds update_time)
 {
     const auto start = Clock::now();
     auto snap = tree.build_snapshot(kWidth, kHeight, version);
@@ -100,6 +103,7 @@ void publish(WidgetTree &tree, Handoff &h, std::uint64_t version)
     {
         std::lock_guard lock{h.mu};
         h.pending = std::move(snap);
+        h.pending_update_time = update_time;
         h.pending_build_time = build_time;
     }
     h.cv.notify_one();
@@ -129,16 +133,18 @@ void logic_main(Handoff &h, TouchSource &touch, raster::Fonts &fonts,
     // First frame, handed to the render thread like any other: it draws and presents it
     // (and records it as `shown`, which input is hit-tested against).
     std::uint64_t version = 0;
-    publish(tree, h, ++version);
+    publish(tree, h, ++version, {});
 
     FrameStats stats{Clock::now()};
     std::optional<Point> last_touch;
     for (;;) {
         route_touch(tree, h, touch.read(), last_touch);
+        const auto update_start = Clock::now();
         example->tick();
+        const auto update_time = since(update_start);
         report_stats(h, stats, *example);
         if (tree.any_dirty())
-            publish(tree, h, ++version);
+            publish(tree, h, ++version, update_time);
         std::this_thread::sleep_for(kPollPeriod);
     }
 }
@@ -153,6 +159,7 @@ void render_main(Handoff &h, FrameSink &sink, const raster::Fonts &fonts)
             h.cv.wait(lock, [&] { return h.pending != nullptr; });
             snap = std::move(h.pending);
             h.pending = nullptr;
+            times.update = h.pending_update_time;
             times.snapshot = h.pending_build_time;
         }
         raster::Canvas canvas{sink.back(), static_cast<int>(kWidth), static_cast<int>(kHeight),
