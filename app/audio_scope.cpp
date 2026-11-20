@@ -47,6 +47,10 @@ void ScopeModel::view(prism::app::WidgetTree::ViewBuilder &vb)
             vb.gap(12.f);
             vb.widget(fit);
             vb.gap(12.f);
+            if (stereo) {
+                vb.widget(second_mic);
+                vb.gap(12.f);
+            }
             vb.widget(gain);
         });
         vb.hstack([&] {
@@ -66,7 +70,7 @@ void ScopeModel::view(prism::app::WidgetTree::ViewBuilder &vb)
 AudioScope::AudioScope(SampleSource &source) : source_(source)
 {
     const double rate = source.sample_rate();
-    model_.title.set({.value = std::string("PRISM scope · ") + source.name(), .heading = true});
+    model_.title.set({.value = std::string("PRISM · ") + source.name(), .heading = true});
     model_.waveform.add_series(BufferSource{&waveform_, 1000.0 / rate}, {});
     model_.waveform.x_range.set(fixed(0.0, double(kWaveformSamples) * 1000.0 / rate));
     model_.waveform.y_range.set(fixed(-1.0, 1.0));
@@ -83,8 +87,10 @@ bool AudioScope::drain_source()
     bool any = false;
     while (const auto n = source_.read(scratch_)) {
         samples_since_report_ += n;
-        for (float v : std::span<const float>(scratch_).first(n))
+        for (float v : std::span<const float>(scratch_).first(n)) {
             peak_since_report_ = std::max(peak_since_report_, std::abs(v));
+            sum_since_report_ += v;
+        }
         if (!frozen)
             shift_in(window_, std::span<const float>(scratch_).first(n));
         any = true;
@@ -94,6 +100,10 @@ bool AudioScope::drain_source()
 
 void AudioScope::tick()
 {
+    if (const bool second = model_.second_mic.get().checked; second != shown_second_mic_) {
+        shown_second_mic_ = second;
+        source_.select_channel(second ? 1 : 0);
+    }
     const bool fresh = drain_source();
     const double gain = model_.gain.get().value;
     const bool db = model_.db_scale.get().checked;
@@ -146,23 +156,30 @@ void AudioScope::show_stats(std::string_view line)
     show_level();
 }
 
-// "PRISM scope · mic · 16000 S/s · peak -42 dBFS": what arrived since the last report.
+// "PRISM · mic · 16000 S/s · dc +0.01 · peak -42 dBFS": what arrived since the last report. The
+// DC level tells a stuck input (a data line held high reads +1) from a quiet one.
 void AudioScope::show_level()
 {
     const char *name = source_.name();
     int n = 0;
     if (samples_since_report_ == 0)
-        n = std::snprintf(title_text_.data(), title_text_.size(), "PRISM scope · %s · no samples", name);
+        n = std::snprintf(title_text_.data(), title_text_.size(), "PRISM · %s · no samples", name);
     else if (peak_since_report_ == 0.f)
-        n = std::snprintf(title_text_.data(), title_text_.size(), "PRISM scope · %s · %zu S/s · silent",
+        n = std::snprintf(title_text_.data(), title_text_.size(), "PRISM · %s · %zu S/s · silent",
                           name, samples_since_report_);
     else
-        n = std::snprintf(title_text_.data(), title_text_.size(), "PRISM scope · %s · %zu S/s · peak %.0f dBFS",
-                          name, samples_since_report_, 20.0 * std::log10(double(peak_since_report_)));
+    {
+        // + 0.0 turns a rounded -0.00 into 0.00.
+        const double dc = std::round(sum_since_report_ / double(samples_since_report_) * 100.0) / 100.0 + 0.0;
+        n = std::snprintf(title_text_.data(), title_text_.size(),
+                          "PRISM · %s · %zu S/s · dc %+.2f · peak %.0f dBFS", name, samples_since_report_, dc,
+                          20.0 * std::log10(double(peak_since_report_)));
+    }
     const std::string_view text(title_text_.data(), std::size_t(std::clamp(n, 0, int(title_text_.size()) - 1)));
     model_.title.mutate([text](prism::ui::Label<> &label) { label.value.assign(text); });
     samples_since_report_ = 0;
     peak_since_report_ = 0.f;
+    sum_since_report_ = 0.0;
 }
 
 std::unique_ptr<Example> make_scope_example(SampleSource &source)

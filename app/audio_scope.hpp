@@ -29,8 +29,10 @@ struct ScopeModel {
     prism::core::Field<prism::ui::Slider<>> gain{
         {.value = 1.0, .min = 0.5, .max = 8.0, .step = 0.5, .label = "gain"}};
     prism::core::Field<prism::ui::Button> fit{{.text = "fit"}}; // y ranges to the signal now
+    prism::core::Field<prism::ui::Checkbox> second_mic{{.checked = false, .label = "mic 2"}};
     prism::plot::PlotModel waveform, spectrum;
     prism::core::Field<prism::ui::Label<>> stats{{.value = "measuring…", .wrap = true}};
+    bool stereo = false; // the source has a second microphone: the view shows second_mic
 
     void view(prism::app::WidgetTree::ViewBuilder &vb);
 };
@@ -68,8 +70,10 @@ private:
     std::uint64_t fit_clicks_ = 0;
     std::size_t samples_since_report_ = 0; // for the title's level readout
     float peak_since_report_ = 0.f;
+    double sum_since_report_ = 0.0;
+    bool shown_second_mic_ = false;
     std::array<char, 96> title_text_{};
-    ScopeModel model_;
+    ScopeModel model_{.stereo = source_.channel_count() > 1};
     prism::app::WidgetTree tree_{model_};
 };
 

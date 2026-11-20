@@ -26,6 +26,10 @@ struct QueuedSource final : app::SampleSource {
     }
     float sample_rate() const override { return kRate; }
     const char *name() const override { return "queued"; }
+    int channel_count() const override { return channels; }
+    void select_channel(int channel) override { selected = channel; }
+    int channels = 1;
+    int selected = 0;
 
     void push_sine(float freq, std::size_t n, float amplitude = 0.5f)
     {
@@ -123,7 +127,7 @@ TEST_CASE("audio scope: the view builds a snapshot and shows the stats line")
     auto snap = scope.tree().build_snapshot(480, 272, 1);
     REQUIRE(snap != nullptr);
     CHECK_FALSE(snap->draw_lists.empty());
-    CHECK(scope.model().title.get().value.starts_with("PRISM scope · queued"));
+    CHECK(scope.model().title.get().value.starts_with("PRISM · queued"));
 }
 
 namespace {
@@ -190,7 +194,42 @@ TEST_CASE("audio scope: the title reports the samples received and their peak ea
     for (int i = 0; i < 20; ++i)
         scope.tick();
     scope.show_stats("1 fps");
-    CHECK(scope.model().title.get().value == "PRISM scope · queued · 16000 S/s · peak -6 dBFS");
+    CHECK(scope.model().title.get().value == "PRISM · queued · 16000 S/s · dc +0.00 · peak -6 dBFS");
     scope.show_stats("1 fps"); // a second with no samples at all
-    CHECK(scope.model().title.get().value == "PRISM scope · queued · no samples");
+    CHECK(scope.model().title.get().value == "PRISM · queued · no samples");
+}
+
+TEST_CASE("audio scope: the title shows a stuck input's DC level")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    src.queued.assign(16000, 1.f); // a data line held high reads full scale, constantly
+    for (int i = 0; i < 20; ++i)
+        scope.tick();
+    scope.show_stats("1 fps");
+    CHECK(scope.model().title.get().value == "PRISM · queued · 16000 S/s · dc +1.00 · peak 0 dBFS");
+}
+
+TEST_CASE("audio scope: a two-microphone source gets a box that switches to the second one")
+{
+    QueuedSource src;
+    src.channels = 2;
+    app::AudioScope scope{src};
+    CHECK(scope.model().stereo);
+    auto box = scope.model().second_mic.get();
+    box.checked = true;
+    scope.model().second_mic.set(box);
+    scope.tick();
+    CHECK(src.selected == 1);
+    box.checked = false;
+    scope.model().second_mic.set(box);
+    scope.tick();
+    CHECK(src.selected == 0);
+}
+
+TEST_CASE("audio scope: a one-channel source has no microphone box")
+{
+    QueuedSource src;
+    app::AudioScope scope{src};
+    CHECK_FALSE(scope.model().stereo);
 }

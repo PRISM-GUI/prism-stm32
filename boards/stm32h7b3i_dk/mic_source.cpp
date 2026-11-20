@@ -21,8 +21,9 @@ void push_half(std::size_t half)
     if (g_mic == nullptr)
         return;
     const std::int16_t *frames = g_record.data() + half * 2 * kFramesPerHalf;
+    const std::size_t slot = std::size_t(g_mic->channel()); // MIC1 the even slots, MIC2 the odd
     for (std::size_t i = 0; i < kFramesPerHalf; ++i)
-        g_converted[i] = float(frames[2 * i]) / 32768.f; // microphone 1: the even slots
+        g_converted[i] = float(frames[2 * i + slot]) / 32768.f;
     g_mic->push(g_converted);
 }
 

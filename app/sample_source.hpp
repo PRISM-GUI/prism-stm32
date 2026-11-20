@@ -14,6 +14,9 @@ struct SampleSource {
     virtual std::size_t read(std::span<float> out) = 0;
     virtual float sample_rate() const = 0;
     virtual const char *name() const = 0; // shown in the title: "mic", "synthetic"
+    // A source with several inputs (the board's two microphones) reads one at a time.
+    virtual int channel_count() const { return 1; }
+    virtual void select_channel(int /*channel*/) {}
     virtual ~SampleSource() = default;
 };
 
