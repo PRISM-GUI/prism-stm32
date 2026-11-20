@@ -50,6 +50,13 @@ Build (on the Coder workspace):
 
     scripts/remote.sh 'meson setup build --cross-file cross/stm32h7.ini -Dprism_dir=$HOME/PRSIM && ninja -C build'
 
+## Third-party sources
+
+`third_party/` is not committed. Besides ST's and FreeRTOS's repositories, the audio scope uses
+CMSIS-DSP's real FFT:
+
+    git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP third_party/CMSIS-DSP
+
 ## QEMU board support and the test firmwares (mps2-an500)
 
 `boards/qemu_mps2/` is the board support for QEMU's MPS2-AN500 board (Cortex-M7), shared by

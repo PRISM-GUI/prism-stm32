@@ -58,6 +58,25 @@ raster_lib = static_library('raster',
   dependencies : deps,
 )
 
+# CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2) for the audio scope; the host build
+# (host/meson.build) compiles the same files. On Arm it needs the CMSIS core headers.
+cmsis_dsp_root = 'third_party' / 'CMSIS-DSP'
+cmsis_dsp_inc = include_directories(cmsis_dsp_root / 'Include', cmsis_dsp_root / 'PrivateInclude',
+  'third_party' / 'cmsis-core' / 'CMSIS' / 'Core' / 'Include')
+cmsis_dsp = static_library('cmsis_dsp', files(
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_init_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_init_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_radix8_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_bitreversal2.c',
+    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_common_tables.c',
+    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_const_structs.c',
+  ),
+  include_directories : cmsis_dsp_inc,
+  c_args : ['-w'],
+)
+
 # ---- QEMU board support (mps2-an500) + FreeRTOS + posix/ layer + test firmwares ----
 # The board support (startup, semihosting, hooks, FreeRTOSConfig.h, linker script) lives in
 # boards/qemu_mps2/ and is shared by every firmware for that board; a different board gets its

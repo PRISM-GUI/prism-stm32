@@ -6,3 +6,4 @@ host/subprojects/*/
 third_party/
 .vibe-out/
 build-local/
+.superpowers/

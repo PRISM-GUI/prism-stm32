@@ -14,7 +14,7 @@
 # NOTE on subprojects: host/subprojects holds copies of the root project's .wrap files and
 # packagefiles plus doctest.wrap (from PRISM's subprojects/). It can instead be a symlink to
 # ../subprojects -- the root subprojects/ carries doctest.wrap too -- if that is preferred.
-project('prism-stm32-host', 'cpp',
+project('prism-stm32-host', 'c', 'cpp',
   version : '0.0.1',
   default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=2',
                      'libunibreak:werror=false', 'libunibreak:warning_level=0'],
@@ -84,3 +84,42 @@ executable('render_demo', files('render_demo.cpp'),
   link_with : [raster_lib, prism_core],
   dependencies : deps,
 )
+
+# CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2), portable C on the host: the same FFT
+# as on the board. __GNUC_PYTHON__ is CMSIS-DSP's own switch for a non-Arm GCC build (it skips
+# cmsis_compiler.h).
+cmsis_dsp_root = repo / 'third_party' / 'CMSIS-DSP'
+cmsis_dsp_inc = include_directories(cmsis_dsp_root / 'Include', cmsis_dsp_root / 'PrivateInclude')
+cmsis_dsp_host_args = ['-D__GNUC_PYTHON__']
+cmsis_dsp = static_library('cmsis_dsp', files(
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_init_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_init_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_radix8_f32.c',
+    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_bitreversal2.c',
+    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_common_tables.c',
+    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_const_structs.c',
+  ),
+  include_directories : cmsis_dsp_inc,
+  c_args : cmsis_dsp_host_args + ['-w'],
+)
+
+# The board-independent audio scope code (app/), linked into its tests and scope_bench.
+scope_lib = static_library('scope', files(
+    repo / 'app' / 'spectrum.cpp',
+    repo / 'app' / 'synthetic_source.cpp',
+  ),
+  include_directories : [repo_inc, cmsis_dsp_inc],
+  cpp_args : cmsis_dsp_host_args,
+)
+
+foreach t : ['test_spectrum', 'test_synthetic_source']
+  e = executable(t, files('tests' / (t + '.cpp')),
+    include_directories : [repo_inc, cmsis_dsp_inc],
+    cpp_args : cmsis_dsp_host_args,
+    link_with : [scope_lib, cmsis_dsp],
+    dependencies : [doctest_dep],
+  )
+  test(t, e)
+endforeach
