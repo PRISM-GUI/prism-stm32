@@ -45,6 +45,11 @@ Canvas::Canvas(std::span<std::uint32_t> pixels, int width, int height, int strid
     reset_clip();
 }
 
+void Canvas::retarget(std::span<std::uint32_t> pixels) {
+    pixels_ = pixels;
+    reset_clip();
+}
+
 Canvas::Clip Canvas::clip_of(Rect r) const {
     int x0 = static_cast<int>(std::floor(r.origin.x.raw()));
     int y0 = static_cast<int>(std::floor(r.origin.y.raw()));
@@ -261,7 +266,8 @@ void Canvas::filled_polygon(std::span<const Point> pts, Color c) {
         min_y = std::min(min_y, p.y.raw());
         max_y = std::max(max_y, p.y.raw());
     }
-    std::vector<float> xs;
+    std::vector<float>& xs = crossings_;
+    xs.reserve(n); // a row crosses at most n edges: no growth inside the row loop
     const int y0 = span_begin(min_y), y1 = span_end(max_y);
     for (int y = y0; y < y1; ++y) {
         const float yc = static_cast<float>(y) + 0.5f;

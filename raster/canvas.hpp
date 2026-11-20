@@ -38,6 +38,11 @@ class Canvas {
 public:
     Canvas(std::span<std::uint32_t> pixels, int width, int height, int stride);
 
+    // Points the canvas at another buffer of the same size (the next back buffer) and resets
+    // the clip. A canvas reused this way keeps its scratch storage: after the first frame,
+    // drawing does not allocate.
+    void retarget(std::span<std::uint32_t> pixels);
+
     int width() const { return width_; }
     int height() const { return height_; }
     int stride() const { return stride_; }
@@ -87,6 +92,7 @@ private:
     std::span<std::uint32_t> pixels_;
     int width_, height_, stride_;
     std::vector<Clip> clip_stack_;   // empty means the clip is the whole canvas
+    std::vector<float> crossings_;   // filled_polygon's scratch: kept so drawing does not allocate
     Clip clip_;
 };
 
