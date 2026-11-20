@@ -1,4 +1,4 @@
 [wrap-git]
-url = https://github.com/jeandet/PRISM.git
+url = https://github.com/jeandet/PRISM
 revision = main
 depth = 1

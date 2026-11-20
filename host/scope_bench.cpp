@@ -4,13 +4,15 @@
 //
 //   host/build/scope_bench [out.ppm] [frames]
 
-#include "app/alloc_count.hpp"
 #include "app/audio_scope.hpp"
-#include "app/frame_stats.hpp"
 #include "app/synthetic_source.hpp"
-#include "raster/canvas.hpp"
-#include "raster/draw_snapshot.hpp"
-#include "raster/fonts.hpp"
+
+#include <prism/app/widget_tree.hpp>
+#include <prism/platform/alloc_count.hpp>
+#include <prism/platform/frame_stats.hpp>
+#include <prism/raster/canvas.hpp>
+#include <prism/raster/draw_snapshot.hpp>
+#include <prism/raster/fonts.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -50,38 +52,42 @@ int main(int argc, char **argv)
     const int frames = argc > 2 ? std::atoi(argv[2]) : 300;
 
     app::SyntheticSource source{16000.f};
-    app::AudioScope scope{source};
-    raster::Fonts fonts;
-    scope.tree().set_text_measurer(&fonts);
+    app::ScopeState state{source};
+    app::ScopeModel model;
+    app::scope_bind(model, state);
+    prism::app::WidgetTree tree{model};
+    prism::raster::Fonts fonts;
+    tree.set_text_measurer(&fonts);
     std::vector<std::uint32_t> fb(std::size_t(W) * H);
-    raster::Canvas canvas{fb, W, H, W};
-    app::FrameStats stats{Clock::now(), prism_allocation_count()};
+    prism::raster::Canvas canvas{fb, W, H, W};
+    using prism::platform::allocation_count;
+    prism::platform::FrameStats stats{Clock::now(), allocation_count()};
 
     prism::render::SceneSnapshot snap; // rebuilt in place every frame, as the board's slots are
     std::uint32_t allocs[3] = {}; // per stage, in the last frame: update, snapshot, draw
     for (std::uint64_t version = 1; version <= std::uint64_t(frames); ++version) {
-        app::StageTimes t;
-        auto count = prism_allocation_count();
+        prism::platform::StageTimes t;
+        auto count = allocation_count();
         auto start = Clock::now();
-        scope.tick();
+        app::scope_tick(model, state);
         t.update = since(start);
-        allocs[0] = prism_allocation_count() - count;
-        count = prism_allocation_count();
+        allocs[0] = allocation_count() - count;
+        count = allocation_count();
         start = Clock::now();
-        scope.tree().build_snapshot(snap, W, H, version);
-        scope.tree().clear_dirty();
+        tree.build_snapshot(snap, W, H, version);
+        tree.clear_dirty();
         t.snapshot = since(start);
-        allocs[1] = prism_allocation_count() - count;
-        count = prism_allocation_count();
+        allocs[1] = allocation_count() - count;
+        count = allocation_count();
         start = Clock::now();
         canvas.clear(snap.window.background);
-        raster::draw(canvas, snap, fonts);
+        prism::raster::draw(canvas, snap, fonts);
         t.draw = since(start);
-        allocs[2] = prism_allocation_count() - count;
+        allocs[2] = allocation_count() - count;
         stats.add(t);
-        if (auto line = stats.tick(Clock::now(), prism_allocation_count())) {
+        if (auto line = stats.tick(Clock::now(), allocation_count())) {
             std::printf("%.*s\n", int(line->size()), line->data());
-            scope.show_stats(*line);
+            app::scope_show_stats(model, state, *line);
         }
     }
     std::printf("allocations in the last frame: update %u, snapshot %u, draw %u\n",

@@ -63,23 +63,23 @@ void ScopeModel::view(prism::app::WidgetTree::ViewBuilder &vb)
     });
 }
 
-AudioScope::AudioScope(SampleSource &source) : source_(source)
+void scope_bind(ScopeModel &model, ScopeState &state)
 {
-    const double rate = source.sample_rate();
-    model_.title.set({.value = std::string("PRISM · ") + source.name(), .heading = true});
-    model_.waveform.add_series(BufferSource{&waveform_, 1000.0 / rate}, {});
-    model_.waveform.x_range.set(fixed(0.0, double(kWaveformSamples) * 1000.0 / rate));
-    model_.waveform.y_range.set(fixed(-1.0, 1.0));
-    model_.waveform.x_label.set("ms");
-    model_.spectrum.add_series(BufferSource{&spectrum_, rate / double(kFftSize)}, {});
-    model_.spectrum.x_range.set(fixed(0.0, rate / 2.0));
-    model_.spectrum.x_label.set("Hz");
-    model_.spectrum.y_range.set(spectrum_y_range(true));
+    using S = ScopeState;
+    const double rate = state.source_.sample_rate();
+    model.title.set({.value = std::string("PRISM · ") + state.source_.name(), .heading = true});
+    model.waveform.add_series(BufferSource{&state.waveform_, 1000.0 / rate}, {});
+    model.waveform.x_range.set(fixed(0.0, double(S::kWaveformSamples) * 1000.0 / rate));
+    model.waveform.y_range.set(fixed(-1.0, 1.0));
+    model.waveform.x_label.set("ms");
+    model.spectrum.add_series(BufferSource{&state.spectrum_, rate / double(S::kFftSize)}, {});
+    model.spectrum.x_range.set(fixed(0.0, rate / 2.0));
+    model.spectrum.x_label.set("Hz");
+    model.spectrum.y_range.set(spectrum_y_range(true));
 }
 
-bool AudioScope::drain_source()
+bool ScopeState::drain_source(bool frozen)
 {
-    const bool frozen = model_.frozen.get().checked;
     bool any = false;
     while (const auto n = source_.read(scratch_)) {
         samples_since_report_ += n;
@@ -94,40 +94,40 @@ bool AudioScope::drain_source()
     return any && !frozen;
 }
 
-void AudioScope::tick()
+void scope_tick(ScopeModel &model, ScopeState &state)
 {
-    const bool fresh = drain_source();
-    const double gain = model_.gain.get().value;
-    const bool db = model_.db_scale.get().checked;
-    if (db != shown_db_)
-        model_.spectrum.y_range.set(spectrum_y_range(db));
-    if (fresh || gain != shown_gain_ || db != shown_db_)
-        update_plots();
-    if (const auto clicks = model_.fit.get().click_count; clicks != fit_clicks_) {
-        fit_clicks_ = clicks;
-        fit_ranges();
+    const bool fresh = state.drain_source(model.frozen.get().checked);
+    const double gain = model.gain.get().value;
+    const bool db = model.db_scale.get().checked;
+    if (db != state.shown_db_)
+        model.spectrum.y_range.set(spectrum_y_range(db));
+    if (fresh || gain != state.shown_gain_ || db != state.shown_db_)
+        state.update_plots(model);
+    if (const auto clicks = model.fit.get().click_count; clicks != state.fit_clicks_) {
+        state.fit_clicks_ = clicks;
+        state.fit_ranges(model);
     }
 }
 
 // Like an oscilloscope's autoset: once, on the samples shown now. The waveform gets its peak
 // with some headroom; the spectrum its peak at the top and 60 dB below it (dB), or 0 .. peak.
-void AudioScope::fit_ranges()
+void ScopeState::fit_ranges(ScopeModel &model)
 {
     constexpr double kHeadroom = 1.2;
     float peak = 0.f;
     for (float v : waveform_)
         peak = std::max(peak, std::abs(v));
     const double half = std::max(double(peak) * kHeadroom, 1e-4);
-    model_.waveform.y_range.set(fixed(-half, half));
+    model.waveform.y_range.set(fixed(-half, half));
     const double top = *std::ranges::max_element(spectrum_);
-    model_.spectrum.y_range.set(shown_db_ ? fixed(top - 60.0, top + 6.0)
-                                          : fixed(0.0, std::max(top * kHeadroom, 1e-6)));
+    model.spectrum.y_range.set(shown_db_ ? fixed(top - 60.0, top + 6.0)
+                                         : fixed(0.0, std::max(top * kHeadroom, 1e-6)));
 }
 
-void AudioScope::update_plots()
+void ScopeState::update_plots(ScopeModel &model)
 {
-    const auto gain = float(model_.gain.get().value);
-    const bool db = model_.db_scale.get().checked;
+    const auto gain = float(model.gain.get().value);
+    const bool db = model.db_scale.get().checked;
     std::ranges::transform(window_, gained_.begin(), [gain](float v) { return v * gain; });
     std::ranges::transform(std::span<const float>(gained_).last(kWaveformSamples), waveform_.begin(),
                            [](float v) { return std::clamp(v, -1.f, 1.f); });
@@ -135,22 +135,22 @@ void AudioScope::update_plots()
         fft_.compute(gained_, spectrum_);
     else
         fft_.compute_linear(gained_, spectrum_);
-    model_.waveform.notify();
-    model_.spectrum.notify();
+    model.waveform.notify();
+    model.spectrum.notify();
     shown_gain_ = gain;
     shown_db_ = db;
 }
 
-void AudioScope::show_stats(std::string_view line)
+void scope_show_stats(ScopeModel &model, ScopeState &state, std::string_view line)
 {
     // In place: the label's string keeps its memory, so a new line allocates nothing.
-    model_.stats.mutate([line](prism::ui::Label<> &label) { label.value.assign(line); });
-    show_level();
+    model.stats.mutate([line](prism::ui::Label<> &label) { label.value.assign(line); });
+    state.show_level(model);
 }
 
 // "PRISM · A0 · 16000 S/s · dc +0.01 · peak -42 dBFS": what arrived since the last report. The
 // DC level tells a stuck input (a data line held high reads +1) from a quiet one.
-void AudioScope::show_level()
+void ScopeState::show_level(ScopeModel &model)
 {
     const char *name = source_.name();
     int n = 0;
@@ -168,15 +168,17 @@ void AudioScope::show_level()
                           20.0 * std::log10(double(peak_since_report_)));
     }
     const std::string_view text(title_text_.data(), std::size_t(std::clamp(n, 0, int(title_text_.size()) - 1)));
-    model_.title.mutate([text](prism::ui::Label<> &label) { label.value.assign(text); });
+    model.title.mutate([text](prism::ui::Label<> &label) { label.value.assign(text); });
     samples_since_report_ = 0;
     peak_since_report_ = 0.f;
     sum_since_report_ = 0.0;
 }
 
-std::unique_ptr<Example> make_scope_example(SampleSource &source)
+void attach_scope(prism::platform::FrameContext &ctx, ScopeModel &model, ScopeState &state)
 {
-    return std::make_unique<AudioScope>(source);
+    scope_bind(model, state);
+    ctx.on_loop([&model, &state] { scope_tick(model, state); });
+    ctx.on_stats([&model, &state](std::string_view line) { scope_show_stats(model, state, line); });
 }
 
 } // namespace app

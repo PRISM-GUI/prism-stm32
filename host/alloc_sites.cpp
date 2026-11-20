@@ -7,19 +7,23 @@
 
 #include "app/audio_scope.hpp"
 #include "app/synthetic_source.hpp"
-#include "raster/fonts.hpp"
+
+#include <prism/app/widget_tree.hpp>
+#include <prism/raster/fonts.hpp>
 
 #include <execinfo.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -51,7 +55,8 @@ void record()
 std::map<void *, std::string> symbolize(const std::vector<void *> &addrs)
 {
     char exe[4096] = {};
-    if (readlink("/proc/self/exe", exe, sizeof exe - 1) < 0)
+    // addr2line with no address reads them from stdin: it would wait forever.
+    if (addrs.empty() || readlink("/proc/self/exe", exe, sizeof exe - 1) < 0)
         return {};
     std::string cmd = std::string("addr2line -f -C -e ") + exe;
     for (void *a : addrs) {
@@ -102,25 +107,31 @@ void operator delete(void *p, std::size_t) noexcept { std::free(p); }
 int main()
 {
     app::SyntheticSource source{16000.f};
-    app::AudioScope scope{source};
-    raster::Fonts fonts;
-    scope.tree().set_text_measurer(&fonts);
+    app::ScopeState state{source};
+    app::ScopeModel model;
+    app::scope_bind(model, state);
+    prism::app::WidgetTree tree{model};
+    prism::raster::Fonts fonts;
+    tree.set_text_measurer(&fonts);
     {
         void *warm[4];
         backtrace(warm, 4); // the first call loads the unwinder, which allocates
     }
     prism::render::SceneSnapshot snap; // rebuilt in place, as the board's runtime does
     for (std::uint64_t v = 1; v <= 10; ++v) { // warm up: caches, first layouts, capacities
-        scope.tick();
-        scope.tree().build_snapshot(snap, 480, 272, v);
-        scope.tree().clear_dirty();
+        app::scope_tick(model, state);
+        tree.build_snapshot(snap, 480, 272, v);
+        tree.clear_dirty();
     }
 
-    scope.tick();
+    // The source runs in real time: without new samples the plots would not change, and the
+    // build measured would not be a real frame's.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    app::scope_tick(model, state);
     g_recording = true;
-    scope.tree().build_snapshot(snap, 480, 272, 11);
+    tree.build_snapshot(snap, 480, 272, 11);
     g_recording = false;
-    scope.tree().clear_dirty();
+    tree.clear_dirty();
 
     std::vector<void *> addrs;
     for (int i = 0; i < g_count; ++i)

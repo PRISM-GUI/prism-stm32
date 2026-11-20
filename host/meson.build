@@ -1,89 +1,46 @@
-# Host (native) build of the rasterizer and its tests: the raster library, PRISM's core from a
-# PRISM checkout (prism_dir; the same source list as the root meson.build's prism_sources
-# option), the doctest tests, and render_demo (writes a demo.ppm of a laid-out snapshot).
+# Host (native) build of the board-independent apps (app/) on PRISM: their doctest tests,
+# scope_bench (the audio scope as fast as it goes, timed like on the board) and alloc_sites
+# (where one snapshot build allocates).
 #
-# The raster/, scripts/ and assets/ files live one level up -- this is a separate meson project
-# so the board build's cross file never applies to it. Meson accepts files() outside the project
-# root as absolute paths, exactly as the root build does for prism_dir.
+# PRISM is the subproject subprojects/prism (a wrap-git of PRISM's main, or a symlink to a
+# checkout), built without SDL. The app/ and third_party/ files live one level up -- this is a
+# separate meson project so the board build's cross file never applies to it; host/subprojects
+# is a symlink to ../subprojects.
 #
 # Build & run:
-#   meson setup host/build -Dprism_dir=/path/to/PRSIM
+#   meson setup host/build
 #   ninja -C host/build && meson test -C host/build
-#   host/build/render_demo demo.ppm
-#
-# NOTE on subprojects: host/subprojects holds copies of the root project's .wrap files and
-# packagefiles plus doctest.wrap (from PRISM's subprojects/). It can instead be a symlink to
-# ../subprojects -- the root subprojects/ carries doctest.wrap too -- if that is preferred.
+#   host/build/scope_bench scope.ppm
 project('prism-stm32-host', 'c', 'cpp',
   version : '0.0.1',
-  default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=2',
-                     'libunibreak:werror=false', 'libunibreak:warning_level=0'],
+  # Static libraries, as on the board: alloc_sites names the frames of one executable.
+  default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=2', 'default_library=static'],
   meson_version : '>= 1.5.0',
 )
 
 # The prism-stm32 checkout this host/ lives in; normalized, since Meson takes 'host/..' for
 # a directory inside this project and refuses it as an include directory.
 repo = import('fs').parent(meson.current_source_dir())
-prism_root = get_option('prism_dir')
-prism_inc = include_directories(prism_root / 'include')
 repo_inc = include_directories(repo)
 
-deps = [
-  dependency('stdexec', fallback : ['stdexec', 'stdexec_dep']),
-  dependency('fmt', fallback : ['fmt', 'fmt_header_only_dep'], default_options : ['header-only=true']),
-  dependency('libunibreak', fallback : ['libunibreak', 'unibreak_dep'], default_options : ['default_library=static']),
-  dependency('sheenbidi', fallback : ['sheenbidi', 'sheenbidi_dep'], default_options : ['default_library=static']),
-  dependency('glaze', fallback : ['glaze', 'glaze_dep']),
-  dependency('magic_enum', fallback : ['magic_enum', 'magic_enum_dep'], default_options : ['test=false']),
-]
+# No network, serial or Markdown code here: those would only fetch more wraps.
+prism = subproject('prism', default_options : ['sdl=disabled', 'http=disabled', 'io=disabled',
+                                               'markdown=disabled'])
+prism_core_dep = prism.get_variable('prism_core_dep')
+prism_raster_dep = prism.get_variable('prism_raster_dep')
+prism_platform_dep = prism.get_variable('prism_platform_dep')
+# libprism is built with -freflection when the compiler has it and with the debug tools outside
+# release builds, but PRISM adds both flags to its own project only. Code including its headers
+# must see the same ones: they change what the headers declare (WidgetTree's and Node's members),
+# so a mismatch crashes.
+# simplify: until prism_headers_dep carries these flags itself; drop this then.
+if prism.get_variable('has_reflection')
+  add_project_arguments('-freflection', language : 'cpp')
+endif
+if prism.get_variable('debug_tools_enabled')
+  add_project_arguments('-DPRISM_DEBUG_TOOLS_ENABLED', language : 'cpp')
+endif
 doctest_dep = dependency('doctest', fallback : ['doctest', 'doctest_dep'])
-
-prism_sources = []
-foreach f : get_option('prism_sources')
-  prism_sources += files(prism_root / 'src' / f)
-endforeach
-
-prism_core = static_library('prism_core', prism_sources,
-  include_directories : prism_inc,
-  dependencies : deps,
-)
-
-# The raster library, as the board build makes it (embedded fonts via scripts/embed.py).
-python3 = find_program('python3')
-embedded_font_sources = [
-  custom_target('embedded_noto_sans_latin',
-    input : files(repo / 'assets' / 'NotoSans-Latin.ttf'),
-    output : 'embedded_noto_sans_latin.cpp',
-    command : [python3, files(repo / 'scripts' / 'embed.py'), '@INPUT@', '@OUTPUT@', 'noto_sans_latin'],
-  ),
-  custom_target('embedded_noto_sans_bold_latin',
-    input : files(repo / 'assets' / 'NotoSans-Bold-Latin.ttf'),
-    output : 'embedded_noto_sans_bold_latin.cpp',
-    command : [python3, files(repo / 'scripts' / 'embed.py'), '@INPUT@', '@OUTPUT@', 'noto_sans_bold_latin'],
-  ),
-]
-
-raster_lib = static_library('raster',
-  files(repo / 'raster' / 'canvas.cpp', repo / 'raster' / 'draw_snapshot.cpp', repo / 'raster' / 'fonts.cpp'),
-  embedded_font_sources,
-  include_directories : [repo_inc, prism_inc],
-  dependencies : deps,
-)
-
-foreach t : ['test_canvas', 'test_fonts', 'test_snapshot']
-  e = executable(t, files('tests' / (t + '.cpp')),
-    include_directories : [repo_inc, prism_inc],
-    link_with : [raster_lib, prism_core],
-    dependencies : deps + [doctest_dep],
-  )
-  test(t, e)
-endforeach
-
-executable('render_demo', files('render_demo.cpp'),
-  include_directories : [repo_inc, prism_inc],
-  link_with : [raster_lib, prism_core],
-  dependencies : deps,
-)
 
 # CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2), portable C on the host: the same FFT
 # as on the board. __GNUC_PYTHON__ is CMSIS-DSP's own switch for a non-Arm GCC build (it skips
@@ -104,69 +61,45 @@ cmsis_dsp = static_library('cmsis_dsp', files(
   include_directories : cmsis_dsp_inc,
   c_args : cmsis_dsp_host_args + ['-w'],
 )
+cmsis_dsp_dep = declare_dependency(
+  link_with : cmsis_dsp,
+  include_directories : cmsis_dsp_inc,
+  compile_args : cmsis_dsp_host_args,
+)
 
-# The board-independent audio scope code (app/), linked into its tests and scope_bench.
+# The board-independent app code (app/), linked into its tests and scope_bench.
 scope_lib = static_library('scope', files(
     repo / 'app' / 'spectrum.cpp',
     repo / 'app' / 'synthetic_source.cpp',
-    repo / 'app' / 'frame_stats.cpp',
     repo / 'app' / 'audio_scope.cpp',
   ),
-  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-  cpp_args : cmsis_dsp_host_args,
-  dependencies : deps,
+  include_directories : repo_inc,
+  dependencies : [prism_core_dep, cmsis_dsp_dep],
+)
+scope_dep = declare_dependency(
+  link_with : scope_lib,
+  include_directories : repo_inc,
+  dependencies : [prism_core_dep, cmsis_dsp_dep],
 )
 
-foreach t : ['test_spectrum', 'test_synthetic_source', 'test_spsc_ring', 'test_adc_sample']
-  e = executable(t, files('tests' / (t + '.cpp')),
-    include_directories : [repo_inc, cmsis_dsp_inc],
-    cpp_args : cmsis_dsp_host_args,
-    link_with : [scope_lib, cmsis_dsp],
-    dependencies : [doctest_dep],
-  )
-  test(t, e)
+foreach t : ['test_spectrum', 'test_synthetic_source', 'test_adc_sample']
+  test(t, executable(t, files('tests' / (t + '.cpp')), dependencies : [scope_dep, doctest_dep]))
 endforeach
 
-foreach t : ['test_audio_scope']
-  e = executable(t, files('tests' / (t + '.cpp')),
-    include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-    cpp_args : cmsis_dsp_host_args,
-    link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
-    dependencies : deps + [doctest_dep],
-  )
-  test(t, e)
+foreach t : ['test_audio_scope', 'test_widgets_app']
+  test(t, executable(t, files('tests' / (t + '.cpp')),
+    dependencies : [scope_dep, prism_raster_dep, doctest_dep]))
 endforeach
 
+# Its FrameStats comes from PRISM's platform library, which calls the two hooks a program
+# linking it defines: alloc_count_host.cpp has them.
 executable('scope_bench', files('scope_bench.cpp', 'alloc_count_host.cpp'),
-  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-  cpp_args : cmsis_dsp_host_args,
-  link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
-  dependencies : deps,
+  dependencies : [scope_dep, prism_platform_dep],
 )
-
-test('test_raster_allocations', executable('test_raster_allocations',
-  files('tests' / 'test_raster_allocations.cpp', 'alloc_count_host.cpp'),
-  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-  cpp_args : cmsis_dsp_host_args,
-  link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
-  dependencies : deps + [doctest_dep],
-))
 
 # Diagnostic: where one snapshot build allocates (host/alloc_sites.cpp). Linked -no-pie so
 # addr2line can name the recorded return addresses.
 executable('alloc_sites', files('alloc_sites.cpp'),
-  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-  cpp_args : cmsis_dsp_host_args,
   link_args : ['-no-pie'],
-  link_with : [scope_lib, cmsis_dsp, raster_lib, prism_core],
-  dependencies : deps,
+  dependencies : [scope_dep, prism_raster_dep],
 )
-
-# FrameStats is checked for allocations: its test links the host's operator new counter.
-test('test_frame_stats', executable('test_frame_stats',
-  files('tests' / 'test_frame_stats.cpp', 'alloc_count_host.cpp'),
-  include_directories : [repo_inc, prism_inc, cmsis_dsp_inc],
-  cpp_args : cmsis_dsp_host_args,
-  link_with : [scope_lib, cmsis_dsp],
-  dependencies : deps + [doctest_dep],
-))
