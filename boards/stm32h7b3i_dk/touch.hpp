@@ -12,8 +12,7 @@
 class Touch final : public app::TouchSource {
 public:
     // BSP_TS_Init probes the GT911 first (I2C4 0xBA), then the FT5336 (0x70 = 7-bit 0x38);
-    // this board answers on the FT5336. Width/height 480x272, orientation TS_SWAP_NONE
-    // (see ft5336_conf.h's comment if the axes come out swapped), accuracy 2 px.
+    // width/height 480x272, axes swapped for the FT5336 as in ST's example, accuracy 2 px.
     bool init();
 
     std::optional<prism::core::Point> read() override;
