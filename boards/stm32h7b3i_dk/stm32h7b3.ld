@@ -50,7 +50,7 @@ MEMORY
 
 /* Initial stack pointer: top of AXI SRAM. The main stack gets the 16 KiB below it
    (the startup code and the pre-scheduler context run on it); the newlib heap stops
-   at _heap_end, 16 KiB below that (see sbrk.c). */
+   at _heap_end, 16 KiB below that (see PRISM's ports/freertos/sbrk.c). */
 _estack = ORIGIN(RAM) + LENGTH(RAM);
 _heap_end = _estack - 16K;
 
@@ -159,7 +159,7 @@ SECTIONS
     } > RAM
 
     . = ALIGN(8);
-    PROVIDE(end = .);   /* newlib's _sbrk (boards/stm32h7b3i_dk/sbrk.c) grows the C heap from here */
+    PROVIDE(end = .);   /* newlib's _sbrk (PRISM's ports/freertos/sbrk.c) grows the C heap from here */
     PROVIDE(_end = .);
 
     /DISCARD/ :

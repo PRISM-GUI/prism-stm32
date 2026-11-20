@@ -36,8 +36,8 @@ the board's `FreeRTOSConfig.h` and linker script, and the apps (`app/`).
    (+ `stm32h7b3i_dk.bin`, size report) and `stm32h7b3i_dk_renode.elf` for Renode
    (`boards/stm32h7b3i_dk/renode/`). See "Run it without the board" and "Flash the board"
    below, and docs/board-bringup.md for the bring-up notes (what was unsure, and why).
-   **Tested in Renode** (boots, draws, two taps on "+1" make the counter read 2);
-   **not yet on the real board**.
+   **Tested in Renode** (boots, draws, two taps on "+1" make the counter read 2) and **running
+   on the real board** (display and touch work; flashed with `st-flash`).
 
 ## How it got here
 

@@ -8,10 +8,9 @@ project('prism-stm32', 'c', 'cpp',
   meson_version : '>= 1.5.0',
 )
 
-# PRISM debug tools off: the board has no keyboard for their hotkey. simplify: PRISM also builds
-# its QEMU test firmwares (tests/embedded) here, two links over the libraries this build makes
-# anyway; add a PRISM option to skip them if that starts to matter.
-prism = subproject('prism', default_options : ['prism_debug_tools=disabled'])
+# PRISM debug tools off: the board has no keyboard for their hotkey. PRISM's own tests
+# (QEMU firmwares) stay off here.
+prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'tests=disabled'])
 prism_platform_dep = prism.get_variable('prism_platform_dep')
 
 # CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2) for the audio scope; the host build
