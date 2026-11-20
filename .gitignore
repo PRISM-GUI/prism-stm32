@@ -3,7 +3,11 @@ subprojects/*/
 !subprojects/packagefiles/
 host/subprojects/*/
 !host/subprojects/packagefiles/
-third_party/
+# third_party/ holds submodules and the symlinks that lay them out as ST's Cube tree
+# (third_party/st). Local leftovers, not used by the build:
+third_party/cube-example/
+third_party/newlib-include/
+third_party/stm32-cs42l51/
 .vibe-out/
 build-local/
 .superpowers/

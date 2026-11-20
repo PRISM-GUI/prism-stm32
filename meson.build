@@ -273,11 +273,11 @@ posix_board = static_library('posix_stm32h7b3i_dk', files(
 
 # The board's own objects, linked whole into each firmware: the CMSIS startup .s (meson
 # assembles .s/.S with the C driver, -x assembler-with-cpp, like posix/tls_support.S),
-# system_stm32h7xx.c from ST's cube-example, the trimmed stm32h7xx_it.c, the TIM6 HAL
+# system_stm32h7xx.c (from STM32CubeH7's STM32H7B3I-DK template, as-is), the trimmed stm32h7xx_it.c, the TIM6 HAL
 # timebase, _sbrk, the FreeRTOS hooks, the display and touch drivers.
 stm32_board = static_library('stm32h7b3i_dk_board', files(
     cmsis_device / 'Source' / 'Templates' / 'gcc' / 'startup_stm32h7b3xxq.s',
-    'third_party' / 'cube-example' / 'system_stm32h7xx.c',
+    board_dir / 'system_stm32h7xx.c',
     board_dir / 'stm32h7xx_it.c',
     board_dir / 'stm32h7xx_hal_timebase_tim.c',
     board_dir / 'sbrk.c',

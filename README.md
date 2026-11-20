@@ -52,10 +52,18 @@ Build (on the Coder workspace):
 
 ## Third-party sources
 
-`third_party/` is not committed. Besides ST's and FreeRTOS's repositories, the audio scope uses
-CMSIS-DSP's real FFT:
+ST's HAL, BSP and component drivers, CMSIS, FreeRTOS, CMSIS-DSP (the scope's FFT) and
+stb_truetype are git submodules in `third_party/`, pinned to the commits this firmware is built
+with:
 
-    git clone --depth 1 --branch v1.16.2 https://github.com/ARM-software/CMSIS-DSP third_party/CMSIS-DSP
+    git clone https://github.com/jeandet/prism-stm32
+    cd prism-stm32
+    git submodule update --init --depth 1
+
+(Not `--recursive`: FreeRTOS's own submodules are ports this firmware does not use.)
+`third_party/st/` is committed as symlinks into those submodules, laid out like STM32CubeH7's
+`Drivers/` tree, because ST's BSP sources include each other by relative path
+(`"../Components/ft5336/ft5336.h"`).
 
 ## QEMU board support and the test firmwares (mps2-an500)
 

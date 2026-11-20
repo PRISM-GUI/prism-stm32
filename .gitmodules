@@ -1,0 +1,48 @@
+[submodule "third_party/cmsis-core"]
+	path = third_party/cmsis-core
+	url = https://github.com/STMicroelectronics/cmsis-core.git
+	shallow = true
+[submodule "third_party/cmsis-device-h7"]
+	path = third_party/cmsis-device-h7
+	url = https://github.com/STMicroelectronics/cmsis-device-h7.git
+	shallow = true
+[submodule "third_party/CMSIS-DSP"]
+	path = third_party/CMSIS-DSP
+	url = https://github.com/ARM-software/CMSIS-DSP.git
+	shallow = true
+[submodule "third_party/FreeRTOS-Kernel"]
+	path = third_party/FreeRTOS-Kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+	shallow = true
+[submodule "third_party/stm32-bsp-common"]
+	path = third_party/stm32-bsp-common
+	url = https://github.com/STMicroelectronics/stm32-bsp-common.git
+	shallow = true
+[submodule "third_party/stm32-ft5336"]
+	path = third_party/stm32-ft5336
+	url = https://github.com/STMicroelectronics/stm32-ft5336.git
+	shallow = true
+[submodule "third_party/stm32-gt911"]
+	path = third_party/stm32-gt911
+	url = https://github.com/STMicroelectronics/stm32-gt911.git
+	shallow = true
+[submodule "third_party/stm32h7b3i-dk-bsp"]
+	path = third_party/stm32h7b3i-dk-bsp
+	url = https://github.com/STMicroelectronics/stm32h7b3i-dk-bsp.git
+	shallow = true
+[submodule "third_party/stm32h7xx-hal-driver"]
+	path = third_party/stm32h7xx-hal-driver
+	url = https://github.com/STMicroelectronics/stm32h7xx-hal-driver.git
+	shallow = true
+[submodule "third_party/stm32-is42s16800j"]
+	path = third_party/stm32-is42s16800j
+	url = https://github.com/STMicroelectronics/stm32-is42s16800j.git
+	shallow = true
+[submodule "third_party/stm32-rk043fn48h"]
+	path = third_party/stm32-rk043fn48h
+	url = https://github.com/STMicroelectronics/stm32-rk043fn48h.git
+	shallow = true
+[submodule "third_party/stb"]
+	path = third_party/stb
+	url = https://github.com/nothings/stb.git
+	shallow = true

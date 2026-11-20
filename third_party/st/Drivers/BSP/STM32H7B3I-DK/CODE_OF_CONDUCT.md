@@ -1,0 +1,1 @@
+../../../../stm32h7b3i-dk-bsp/CODE_OF_CONDUCT.md
