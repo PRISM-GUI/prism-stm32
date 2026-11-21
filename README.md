@@ -186,8 +186,11 @@ port (USART1 on PA9/PA10, 921600 baud 8N1 — the `/dev/ttyACM0` the host sees).
 pauses the recorder for its duration, so the screen freezes for about **2 s** while
 1024 events × 6 threads drain at 921600 baud.
 
-Capture it on the host — start `prism-trace` first, then press the button (it reads until the
-dump's end chunk arrives, or 5 s of silence):
+Capture it on the host — start `prism-trace` first, then press the button whenever you like
+(it waits for the first byte, then reads until the dump's end chunk arrives, or 5 s of
+silence). `prism-trace` is built with PRISM on the host (`tools/prism-trace/` in a desktop
+build directory); reading a serial port needs PRISM's `io` feature, on by default when Asio is
+found:
 
     prism-trace /dev/ttyACM0 -o trace.json --baud 921600
 
