@@ -6,9 +6,9 @@
 #include "display.hpp"
 #include "touch.hpp"
 #include "uart_stream.hpp"
-#include "app/widgets_app.hpp"
-#include "app/audio_scope.hpp"
-#include "app/synthetic_source.hpp"
+#include <embedded/widgets_app.hpp>
+#include <embedded/audio_scope.hpp>
+#include <embedded/synthetic_source.hpp>
 #include "adc_source.hpp"
 
 #include <prism/platform/alloc_count.hpp>
@@ -170,9 +170,9 @@ static void dump_on_button()
 
 // The scope's samples: the ADC on Arduino A0, or the generated sweep where it does not start —
 // and always in Renode, which does not emulate the ADC.
-static app::SampleSource &scope_source()
+static prism_examples::SampleSource &scope_source()
 {
-    static app::SyntheticSource synthetic{AdcSource::kSampleRate};
+    static prism_examples::SyntheticSource synthetic{AdcSource::kSampleRate};
 #ifdef PRISM_RENODE
     return synthetic;
 #else
@@ -197,17 +197,19 @@ static void run_example(Display &display, Touch &touch)
 {
     using prism::platform::FrameContext;
 #ifdef PRISM_EXAMPLE_SCOPE
-    static app::ScopeModel model;
-    static app::ScopeState state{scope_source()};
+    static prism_examples::ScopeModel model;
+    static prism_examples::ScopeState state{scope_source()};
     prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
-        app::attach_scope(ctx, model, state);
+        prism_examples::attach_scope(ctx, model, state);
         arm_allocation_guard(ctx);
         ctx.on_loop(dump_on_button); /* the blue button: dump the profile recorder over COM1 */
     });
 #else
-    static app::WidgetsModel model;
+    static prism_examples::WidgetsModel model;
+    // PRISM's WidgetsModel titles itself "PRISM"; this board's demo says what it runs on.
+    model.title.set({.value = "PRISM on STM32H7", .heading = true});
     prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
-        app::attach_widgets(ctx, model);
+        prism_examples::attach_widgets(ctx, model);
         arm_allocation_guard(ctx);
         ctx.on_loop(dump_on_button); /* the blue button: dump the profile recorder over COM1 */
     });

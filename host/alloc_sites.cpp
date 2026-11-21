@@ -5,8 +5,8 @@
 //
 //   host/build/alloc_sites
 
-#include "app/audio_scope.hpp"
-#include "app/synthetic_source.hpp"
+#include <embedded/audio_scope.hpp>
+#include <embedded/synthetic_source.hpp>
 
 #include <prism/app/widget_tree.hpp>
 #include <prism/raster/fonts.hpp>
@@ -86,7 +86,7 @@ std::string site_of(const Record &r, std::map<void *, std::string> &names)
         const std::string head = n.substr(0, n.find('(')); // return type + qualified name
         const bool library = head.find("std::") != std::string::npos ||
                              head.find("__gnu_cxx::") != std::string::npos;
-        if (!library && (n.starts_with("prism::") || n.starts_with("app::")))
+        if (!library && (n.starts_with("prism::") || n.starts_with("prism_examples::")))
             return n.substr(0, 160);
     }
     return "(no prism frame)";
@@ -110,10 +110,10 @@ void operator delete(void *p, std::size_t) noexcept { std::free(p); }
 
 int main()
 {
-    app::SyntheticSource source{16000.f};
-    app::ScopeState state{source};
-    app::ScopeModel model;
-    app::scope_bind(model, state);
+    prism_examples::SyntheticSource source{16000.f};
+    prism_examples::ScopeState state{source};
+    prism_examples::ScopeModel model;
+    prism_examples::scope_bind(model, state);
     prism::app::WidgetTree tree{model};
     prism::raster::Fonts fonts;
     tree.set_text_measurer(&fonts);
@@ -123,7 +123,7 @@ int main()
     }
     prism::render::SceneSnapshot snap; // rebuilt in place, as the board's runtime does
     for (std::uint64_t v = 1; v <= 10; ++v) { // warm up: caches, first layouts, capacities
-        app::scope_tick(model, state);
+        prism_examples::scope_tick(model, state);
         tree.build_snapshot(snap, 480, 272, v);
         tree.clear_dirty();
     }
@@ -131,7 +131,7 @@ int main()
     // The source runs in real time: without new samples the plots would not change, and the
     // build measured would not be a real frame's.
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    app::scope_tick(model, state);
+    prism_examples::scope_tick(model, state);
     g_recording = true;
     tree.build_snapshot(snap, 480, 272, 11);
     g_recording = false;

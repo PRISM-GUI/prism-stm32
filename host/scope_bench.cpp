@@ -4,8 +4,8 @@
 //
 //   host/build/scope_bench [out.ppm] [frames]
 
-#include "app/audio_scope.hpp"
-#include "app/synthetic_source.hpp"
+#include <embedded/audio_scope.hpp>
+#include <embedded/synthetic_source.hpp>
 
 #include <prism/app/widget_tree.hpp>
 #include <prism/platform/alloc_count.hpp>
@@ -51,10 +51,10 @@ int main(int argc, char **argv)
     const char *path = argc > 1 ? argv[1] : "scope.ppm";
     const int frames = argc > 2 ? std::atoi(argv[2]) : 300;
 
-    app::SyntheticSource source{16000.f};
-    app::ScopeState state{source};
-    app::ScopeModel model;
-    app::scope_bind(model, state);
+    prism_examples::SyntheticSource source{16000.f};
+    prism_examples::ScopeState state{source};
+    prism_examples::ScopeModel model;
+    prism_examples::scope_bind(model, state);
     prism::app::WidgetTree tree{model};
     prism::raster::Fonts fonts;
     tree.set_text_measurer(&fonts);
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
         prism::platform::StageTimes t;
         auto count = allocation_count();
         auto start = Clock::now();
-        app::scope_tick(model, state);
+        prism_examples::scope_tick(model, state);
         t.update = since(start);
         allocs[0] = allocation_count() - count;
         count = allocation_count();
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
         stats.add(t);
         if (auto line = stats.tick(Clock::now(), allocation_count())) {
             std::printf("%.*s\n", int(line->size()), line->data());
-            app::scope_show_stats(model, state, *line);
+            prism_examples::scope_show_stats(model, state, *line);
         }
     }
     std::printf("allocations in the last frame: update %u, snapshot %u, draw %u\n",

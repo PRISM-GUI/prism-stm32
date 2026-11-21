@@ -1,6 +1,7 @@
 # PRISM on the STM32H7B3I-DK. PRISM (the subproject subprojects/prism) gives the library, the
-# rasterizer, the frame runtime (platform/) and, on a bare-metal host, the FreeRTOS kernel and
-# POSIX layer files, which this board compiles against its own FreeRTOSConfig.h.
+# rasterizer, the frame runtime (platform/), the demo apps (examples/embedded/) and, on a
+# bare-metal host, the FreeRTOS kernel and POSIX layer files, which this board compiles against
+# its own FreeRTOSConfig.h.
 project('prism-stm32', 'c', 'cpp',
   version : '0.0.1',
   default_options : ['cpp_std=c++26', 'warning_level=2', 'optimization=s',
@@ -17,27 +18,13 @@ prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'te
                                                 'profiling=enabled', 'profiling_events=1024',
                                                 'profiling_threads=6'])
 prism_platform_dep = prism.get_variable('prism_platform_dep')
+# The shared board apps (the widget demo and the audio scope) plus CMSIS-DSP for the scope's
+# FFT come from PRISM (examples/embedded/): prism_embedded_apps_dep carries the include
+# directory (the apps include each other as <embedded/x.hpp>), the apps' static library, PRISM's
+# core and CMSIS-DSP.
+prism_embedded_apps_dep = prism.get_variable('prism_embedded_apps_dep')
 
-# CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2) for the audio scope; the host build
-# (host/meson.build) compiles the same files. On Arm it needs the CMSIS core headers.
-cmsis_dsp_root = 'third_party' / 'CMSIS-DSP'
-cmsis_dsp_inc = include_directories(cmsis_dsp_root / 'Include', cmsis_dsp_root / 'PrivateInclude',
-  'third_party' / 'cmsis-core' / 'CMSIS' / 'Core' / 'Include')
-cmsis_dsp = static_library('cmsis_dsp', files(
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_f32.c',
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_rfft_fast_init_f32.c',
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_f32.c',
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_init_f32.c',
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_cfft_radix8_f32.c',
-    cmsis_dsp_root / 'Source' / 'TransformFunctions' / 'arm_bitreversal2.c',
-    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_common_tables.c',
-    cmsis_dsp_root / 'Source' / 'CommonTables' / 'arm_const_structs.c',
-  ),
-  include_directories : cmsis_dsp_inc,
-  c_args : ['-w'],
-)
-
-# ---- STM32H7B3I-DK board support (boards/stm32h7b3i_dk/) + ST's HAL/BSP + the demo app ----
+# ---- STM32H7B3I-DK board support (boards/stm32h7b3i_dk/) + ST's HAL/BSP ----
 # The board's defines come from ST's .cproject for this board:
 # STM32H7B3xxQ, USE_HAL_DRIVER, and USE_PWR_DIRECT_SMPS_SUPPLY — the power supply MUST be
 # direct SMPS (a wrong mode can lock the chip; ExitRun0Mode in the CMSIS startup relies on it).
@@ -153,12 +140,11 @@ board_sources = files(
   board_dir / 'display.cpp',
   board_dir / 'touch.cpp',
   board_dir / 'uart_stream.cpp',
-  'app' / 'audio_scope.cpp',
-  'app' / 'spectrum.cpp',
-  'app' / 'synthetic_source.cpp',
   board_dir / 'adc_source.cpp',
 )
-board_incs = [board_inc, freertos_board_inc, include_directories('.'), cmsis_dsp_inc]
+# include_directories('.') stays for adc_source.cpp's "app/adc_sample.hpp" (the one app/ file
+# that did not move to PRISM).
+board_incs = [board_inc, freertos_board_inc, include_directories('.')]
 # The example the firmware runs (meson option `example`).
 example_defines = get_option('example') == 'scope' ? ['-DPRISM_EXAMPLE_SCOPE'] : []
 # The allocation guard (meson option `alloc_guard`): main.cpp arms it at the first timing line.
@@ -172,8 +158,8 @@ endif
 # weak IRQ handlers — a plain archive member is never pulled in for any of those.
 board_firmware_args = {
   'include_directories' : board_incs,
-  'dependencies' : prism_platform_dep,
-  'link_with' : [cmsis_dsp, hal_lib, bsp_lib, freertos_board],
+  'dependencies' : [prism_platform_dep, prism_embedded_apps_dep],
+  'link_with' : [hal_lib, bsp_lib, freertos_board],
   'link_whole' : [posix_board, stm32_board],
   'link_depends' : files(board_dir / 'stm32h7b3.ld'),
   'link_args' : ['-T', board_ld, prism.get_variable('alloc_count_link_arg')],

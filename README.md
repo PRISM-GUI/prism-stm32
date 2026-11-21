@@ -3,9 +3,12 @@
 A port of [PRISM](https://github.com/jeandet/PRISM) to ST's STM32H7B3I-DK board
 (Cortex-M7 at 280 MHz, 1.4 MB RAM, 16 MB SDRAM, 480x272 touch screen). PRISM is used
 as-is (the subproject `subprojects/prism`): its library, its software rasterizer, its frame
-runtime (`frame_app`) and its FreeRTOS port (the kernel, the POSIX layer, the QEMU test
-firmwares). This repository holds the board: ST's HAL and BSP, the display, the touch, the ADC,
-the board's `FreeRTOSConfig.h` and linker script, and the apps (`app/`).
+runtime (`frame_app`), its demo apps (`examples/embedded/`, linked as `prism_embedded_apps_dep`)
+and its FreeRTOS port (the kernel, the POSIX layer, the QEMU test firmwares). This repository
+holds the board: ST's HAL and BSP, the display, the touch, the ADC, the board's
+`FreeRTOSConfig.h` and linker script, and the board-side glue in `app/` (only
+`adc_sample.hpp`, the ADC reading to sample conversion — the widget demo and the audio scope
+themselves are PRISM's, so every board repository builds the same sources).
 
 ## Status
 
@@ -28,9 +31,10 @@ the board's `FreeRTOSConfig.h` and linker script, and the apps (`app/`).
    ARGB8888 pixel span (the LTDC framebuffer format), embedded TTF fonts as the text measurer
    (`raster::Fonts`, so layout and drawing agree), and `raster::draw()` painting a
    `SceneSnapshot`. Tested on the host (`host/`) and in QEMU.
-6. **The STM32H7B3I-DK board** (`boards/stm32h7b3i_dk/`, `app/`): ST's HAL + BSP bring-up
+6. **The STM32H7B3I-DK board** (`boards/stm32h7b3i_dk/`, plus `app/adc_sample.hpp`): ST's HAL + BSP bring-up
    (SDRAM, LTDC LCD with double buffering in SDRAM, FT5336 touch on I2C4, LED), FreeRTOS
-   with the HAL tick on TIM6, and the apps run by PRISM's `frame_app` — a logic thread polling
+   with the HAL tick on TIM6, and PRISM's demo apps from `examples/embedded/` run by PRISM's
+   `frame_app` — a logic thread polling
    touch and routing it through `WidgetTree`'s input path, a render thread rasterizing
    snapshots into the back buffer and flipping the LTDC layer at vblank. Built as `stm32h7b3i_dk.elf`
    (+ `stm32h7b3i_dk.bin`, size report) and `stm32h7b3i_dk_renode.elf` for Renode
@@ -55,9 +59,9 @@ Build (on the Coder workspace, where `subprojects/prism` is a symlink to a PRISM
 
 ## Third-party sources
 
-ST's HAL, BSP and component drivers, CMSIS and CMSIS-DSP (the scope's FFT) are git
-submodules in `third_party/`, pinned to the commits this firmware is built with (FreeRTOS and
-stb_truetype come with PRISM, as Meson wraps):
+ST's HAL, BSP and component drivers and CMSIS are git submodules in `third_party/`, pinned to
+the commits this firmware is built with (CMSIS-DSP, the scope's FFT, comes with PRISM now, as its
+`cmsis-dsp` subproject; FreeRTOS and stb_truetype come with PRISM, as Meson wraps):
 
     git clone https://github.com/jeandet/prism-stm32
     cd prism-stm32

@@ -6,10 +6,6 @@
 	path = third_party/cmsis-device-h7
 	url = https://github.com/STMicroelectronics/cmsis-device-h7.git
 	shallow = true
-[submodule "third_party/CMSIS-DSP"]
-	path = third_party/CMSIS-DSP
-	url = https://github.com/ARM-software/CMSIS-DSP.git
-	shallow = true
 [submodule "third_party/stm32-bsp-common"]
 	path = third_party/stm32-bsp-common
 	url = https://github.com/STMicroelectronics/stm32-bsp-common.git
