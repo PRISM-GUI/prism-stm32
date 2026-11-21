@@ -18,9 +18,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h7xx_hal.h"
 
-/* COM define */
+/* COM define. USE_BSP_COM_FEATURE brings in only the COM1 init/deinit (USART1 on PA9/PA10,
+   AF7, their clocks) and hcom_uart: the profiling dump's transport (uart_stream.cpp). The
+   log port stays off: printf goes to semihosting, not to the ST-LINK. */
 #define USE_COM_LOG                         0U
-#define USE_BSP_COM_FEATURE                 0U
+#define USE_BSP_COM_FEATURE                 1U
 
 /* I2C BUS timing define */
 #define I2C_VALID_TIMING_NBR                128U

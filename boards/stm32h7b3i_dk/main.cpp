@@ -5,6 +5,7 @@
 // differs in display.cpp.
 #include "display.hpp"
 #include "touch.hpp"
+#include "uart_stream.hpp"
 #include "app/widgets_app.hpp"
 #include "app/audio_scope.hpp"
 #include "app/synthetic_source.hpp"
@@ -12,6 +13,7 @@
 
 #include <prism/platform/alloc_count.hpp>
 #include <prism/platform/frame_app.hpp>
+#include <prism/profile/dump.hpp>
 
 #include "stm32h7b3i_discovery.h"
 #include "stm32h7b3i_discovery_sdram.h"
@@ -148,6 +150,24 @@ static void SystemClock_Config(void)
 
 // --- Firmware ---
 
+// The profiling dump's transport: COM1 (USART1 on PA9/PA10, the ST-LINK's virtual COM port).
+// The build is profiling-on (meson.build: the prism subproject's profiling=enabled), so the
+// PRISM_PROFILE_* marks record into prism::profile::global() while the app runs.
+static UartStream uart;
+
+// The blue user button dumps the recorder over that port, on the press edge (released ->
+// pressed). Registered as an on_loop hook, so it runs on the logic thread once per loop turn.
+// dump() pauses the recorder for its duration and resumes it on return, so the ~2 s the UART
+// takes to drain 1024 events x 6 threads are simply not recorded (the screen freezes meanwhile).
+static void dump_on_button()
+{
+    static bool was_pressed = false;
+    const bool pressed = BSP_PB_GetState(BUTTON_USER) == BUTTON_PRESSED;
+    if (pressed && !was_pressed)
+        (void)prism::profile::dump(prism::profile::global(), uart); // no cable: the dump is lost, not an error
+    was_pressed = pressed;
+}
+
 // The scope's samples: the ADC on Arduino A0, or the generated sweep where it does not start —
 // and always in Renode, which does not emulate the ADC.
 static app::SampleSource &scope_source()
@@ -182,12 +202,14 @@ static void run_example(Display &display, Touch &touch)
     prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
         app::attach_scope(ctx, model, state);
         arm_allocation_guard(ctx);
+        ctx.on_loop(dump_on_button); /* the blue button: dump the profile recorder over COM1 */
     });
 #else
     static app::WidgetsModel model;
     prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
         app::attach_widgets(ctx, model);
         arm_allocation_guard(ctx);
+        ctx.on_loop(dump_on_button); /* the blue button: dump the profile recorder over COM1 */
     });
 #endif
 }
@@ -234,6 +256,12 @@ extern "C" int main(void)
 
   BSP_LED_Init(LED2); /* blinks from vApplicationIdleHook */
   BSP_LED_Init(LED3); /* red: lit when the touch controller does not answer */
+
+  /* The blue user button (PC13, polled as a plain GPIO) triggers the profiling dump, and COM1
+     (USART1 on PA9/PA10, the ST-LINK's virtual COM port) carries it — both after the clocks,
+     since USART1's kernel clock comes from APB2. */
+  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
+  uart.init();
 
   xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: frame_app's pthreads come from the heap */
   vTaskStartScheduler();

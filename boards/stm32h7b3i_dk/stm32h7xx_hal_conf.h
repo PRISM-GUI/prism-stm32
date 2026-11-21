@@ -3,8 +3,8 @@
   * @file    stm32h7xx_hal_conf.h
   * @brief   HAL configuration for the STM32H7B3I-DK firmware. From ST's cube-example for
   *          this board, trimmed to the modules the BSP + this firmware actually use:
-  *          RCC, PWR, FLASH, CORTEX, GPIO, EXTI, DMA, DMA2D, LTDC, SDRAM (FMC), I2C, MDMA, TIM.
-  *          The HAL timebase is TIM6 (see stm32h7xx_hal_timebase_tim.c) because FreeRTOS
+  *          RCC, PWR, FLASH, CORTEX, GPIO, EXTI, DMA, DMA2D, LTDC, SDRAM (FMC), I2C, MDMA, TIM,
+  *          UART. The HAL timebase is TIM6 (see stm32h7xx_hal_timebase_tim.c) because FreeRTOS
   *          owns SysTick.
   ******************************************************************************
   */
@@ -31,6 +31,7 @@
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_SDRAM_MODULE_ENABLED
 #define HAL_TIM_MODULE_ENABLED
+#define HAL_UART_MODULE_ENABLED
 
 /* ########################## Oscillator Values adaptation ####################*/
 #if !defined  (HSE_VALUE)
@@ -89,6 +90,7 @@
 #define  USE_HAL_RCC_REGISTER_CALLBACKS     0U
 #define  USE_HAL_SDRAM_REGISTER_CALLBACKS   0U
 #define  USE_HAL_TIM_REGISTER_CALLBACKS     0U
+#define  USE_HAL_UART_REGISTER_CALLBACKS    0U
 
 /* ########################## Assert Selection ############################## */
 /* #define USE_FULL_ASSERT    1 */
@@ -153,6 +155,12 @@
 #ifdef HAL_ADC_MODULE_ENABLED
  #include "stm32h7xx_hal_adc.h"
 #endif /* HAL_ADC_MODULE_ENABLED */
+
+/* COM1 (USART1 on PA9/PA10, the ST-LINK's virtual COM port): the profiling dump's transport
+   (boards/stm32h7b3i_dk/uart_stream.cpp, behind USE_BSP_COM_FEATURE). */
+#ifdef HAL_UART_MODULE_ENABLED
+ #include "stm32h7xx_hal_uart.h"
+#endif /* HAL_UART_MODULE_ENABLED */
 
 /* Exported macro ------------------------------------------------------------*/
 #ifdef  USE_FULL_ASSERT

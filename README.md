@@ -172,3 +172,26 @@ plus the newlib heap must fit the 1 MiB AXI SRAM. The power supply must be **dir
 (the build defines `USE_PWR_DIRECT_SMPS_SUPPLY`, as ST's .cproject for this board does): a
 wrong supply mode can lock the chip until a power-on reset. A power cycle (unplug/replug)
 clears it.
+
+## Profiling
+
+The firmware is built with PRISM's profiling on (the PRISM subproject's `profiling=enabled`,
+`profiling_events=1024`, `profiling_threads=6`): the `PRISM_PROFILE_*` marks record into a
+global recorder of 1024 events per thread ring × 6 rings — about 144 KiB of .bss in the 1 MiB
+AXI SRAM, so check `build/stm32h7b3i_dk.size.txt` after a build. The recorder's clock is the
+DWT cycle counter, so timestamps are CPU cycles at 280 MHz.
+
+Press the **blue user button** (PC13) to dump the recorder over the ST-LINK's virtual COM
+port (USART1 on PA9/PA10, 921600 baud 8N1 — the `/dev/ttyACM0` the host sees). The dump
+pauses the recorder for its duration, so the screen freezes for about **2 s** while
+1024 events × 6 threads drain at 921600 baud.
+
+Capture it on the host — start `prism-trace` first, then press the button (it reads until the
+dump's end chunk arrives, or 5 s of silence):
+
+    prism-trace /dev/ttyACM0 -o trace.json --baud 921600
+
+The tool's one-line summary also prints the dump's **ticks per second**, which says which
+clock the board recorded with: 280000000 when the DWT cycle counter ran, 1000000 for the
+microsecond fallback (QEMU/Renode, where the DWT does not count). Then open
+<https://ui.perfetto.dev> in a browser and load `trace.json`.

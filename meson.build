@@ -9,8 +9,13 @@ project('prism-stm32', 'c', 'cpp',
 )
 
 # PRISM debug tools off: the board has no keyboard for their hotkey. PRISM's own tests
-# (QEMU firmwares) stay off here.
-prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'tests=disabled'])
+# (QEMU firmwares) stay off here. Profiling on (doc/design/profiling.md in PRISM): the
+# PRISM_PROFILE_* marks plus the global recorder, 1024 events per thread ring x 6 rings
+# (~144 KiB of .bss in the 1 MiB AXI SRAM -- check the size report), dumped over the
+# ST-LINK's serial port on the blue button (boards/stm32h7b3i_dk/main.cpp).
+prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'tests=disabled',
+                                                'profiling=enabled', 'profiling_events=1024',
+                                                'profiling_threads=6'])
 prism_platform_dep = prism.get_variable('prism_platform_dep')
 
 # CMSIS-DSP's real FFT (third_party/CMSIS-DSP, tag v1.16.2) for the audio scope; the host build
@@ -87,6 +92,8 @@ hal_lib = static_library('stm32h7_hal', files(
     hal_dir / 'Src' / 'stm32h7xx_hal_mdma.c',
     hal_dir / 'Src' / 'stm32h7xx_hal_adc.c',     # the scope's input: Arduino A0
     hal_dir / 'Src' / 'stm32h7xx_hal_adc_ex.c',
+    hal_dir / 'Src' / 'stm32h7xx_hal_uart.c',    # COM1 (USART1, the ST-LINK's virtual COM
+    hal_dir / 'Src' / 'stm32h7xx_hal_uart_ex.c', # port): the profiling dump's transport
   ),
   include_directories : board_inc,
   c_args : board_defines,
@@ -145,6 +152,7 @@ board_sources = files(
   board_dir / 'main.cpp',
   board_dir / 'display.cpp',
   board_dir / 'touch.cpp',
+  board_dir / 'uart_stream.cpp',
   'app' / 'audio_scope.cpp',
   'app' / 'spectrum.cpp',
   'app' / 'synthetic_source.cpp',
