@@ -34,6 +34,10 @@ public:
         return {prism::core::Width{float(kWidth)}, prism::core::Height{float(kHeight)}};
     }
 
+    // Two buffers that swap: the back one shows the frame before last, so the runtime redraws
+    // only what changed in the last two frames (PRISM's damage tracking).
+    int buffer_age() const override { return 2; }
+
 private:
 #ifdef PRISM_RENODE
     void fit_active_width_to_layer();
