@@ -34,6 +34,11 @@ public:
         return {prism::core::Width{float(kWidth)}, prism::core::Height{float(kHeight)}};
     }
 
+    // Fills a rectangle of the back buffer with the DMA2D (Chrom-ART, register to memory) and waits
+    // for it; the CPU's cache is invalidated over the rectangle afterwards, so the rasterizer's
+    // blending reads what the DMA2D wrote. False (the CPU clears) where there is no DMA2D (Renode).
+    bool clear_rect(int x0, int y0, int x1, int y1, std::uint32_t argb) override;
+
     // Two buffers that swap: the back one shows the frame before last, so the runtime redraws
     // only what changed in the last two frames (PRISM's damage tracking).
     int buffer_age() const override { return 2; }
