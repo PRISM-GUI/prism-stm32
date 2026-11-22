@@ -7,6 +7,9 @@
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_ltdc.h"
 
+#include "FreeRTOS.h"
+#include "semphr.h"
+
 #include <utility>
 
 namespace {
@@ -15,7 +18,23 @@ constexpr std::uint32_t kBack  = 0xD0080000; // right after one 480*272*4-byte b
 constexpr std::uint32_t kReloadTimeoutMs = 100;
 constexpr std::uint32_t kDma2dTimeoutMs = 20;   // a full frame is ~3 ms of SDRAM writes
 constexpr std::uint32_t kCacheLine = 32;
+constexpr std::uint32_t kDma2dIrqPriority = 15;   // may call FromISR APIs (FreeRTOSConfig.h)
+
+SemaphoreHandle_t g_dma2d_done;
+volatile std::uint32_t g_dma2d_error;
 } // namespace
+
+// The DMA2D transfer ended (or failed): wake the thread that is waiting in clear_rect(), which
+// sleeps meanwhile and leaves the CPU to the logic thread.
+extern "C" void DMA2D_IRQHandler(void)
+{
+    const std::uint32_t flags = DMA2D->ISR & (DMA2D_ISR_TCIF | DMA2D_ISR_TEIF | DMA2D_ISR_CEIF);
+    DMA2D->IFCR = flags;
+    g_dma2d_error = flags & (DMA2D_ISR_TEIF | DMA2D_ISR_CEIF);
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(g_dma2d_done, &woken);
+    portYIELD_FROM_ISR(woken);
+}
 
 bool Display::init()
 {
@@ -34,7 +53,12 @@ bool Display::init()
 #ifdef PRISM_RENODE
     fit_active_width_to_layer();
 #else
+    g_dma2d_done = xSemaphoreCreateBinary();
+    if (g_dma2d_done == nullptr)
+        return false;
     __HAL_RCC_DMA2D_CLK_ENABLE();
+    HAL_NVIC_SetPriority(DMA2D_IRQn, kDma2dIrqPriority, 0);
+    HAL_NVIC_EnableIRQ(DMA2D_IRQn);
 #endif
     front_ = kFront;
     back_ = kBack;
@@ -67,20 +91,19 @@ bool Display::clear_rect(int x0, int y0, int x1, int y1, std::uint32_t argb)
     const std::uint32_t row_bytes = kWidth * sizeof(std::uint32_t);
     const std::uint32_t first = back_ + static_cast<std::uint32_t>(y0) * row_bytes
                                 + static_cast<std::uint32_t>(x0) * sizeof(std::uint32_t);
-    DMA2D->CR = DMA2D_R2M;                       // register to memory, no interrupts
+    DMA2D->CR = DMA2D_R2M | DMA2D_CR_TCIE | DMA2D_CR_TEIE | DMA2D_CR_CEIE;   // register to memory
     DMA2D->OPFCCR = DMA2D_OUTPUT_ARGB8888;
     DMA2D->OCOLR = argb;
     DMA2D->OMAR = first;
     DMA2D->OOR = static_cast<std::uint32_t>(kWidth) - w;   // pixels to skip at the end of each line
     DMA2D->NLR = (w << DMA2D_NLR_PL_Pos) | h;
     DMA2D->IFCR = DMA2D_IFCR_CTCIF | DMA2D_IFCR_CTEIF | DMA2D_IFCR_CCEIF;
+    g_dma2d_error = 0;
+    xSemaphoreTake(g_dma2d_done, 0);   // a stale give from a transfer that timed out
     DMA2D->CR |= DMA2D_CR_START;
-    const std::uint32_t deadline = HAL_GetTick() + kDma2dTimeoutMs;
-    while ((DMA2D->ISR & (DMA2D_ISR_TCIF | DMA2D_ISR_TEIF)) == 0) {
-        if (static_cast<std::int32_t>(HAL_GetTick() - deadline) >= 0)
-            return false;   // stuck: the CPU clears instead (and the DMA2D is left to finish)
-    }
-    if ((DMA2D->ISR & DMA2D_ISR_TEIF) != 0)
+    if (xSemaphoreTake(g_dma2d_done, pdMS_TO_TICKS(kDma2dTimeoutMs)) != pdTRUE)
+        return false;   // stuck: the CPU clears instead (and the DMA2D is left to finish)
+    if (g_dma2d_error != 0)
         return false;
     // The DMA2D wrote around the cache. The MPU maps SDRAM write-through, so the cache holds no
     // dirty line: invalidating whole lines, rectangle edges included, loses nothing.
