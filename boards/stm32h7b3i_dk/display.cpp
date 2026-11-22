@@ -21,8 +21,20 @@ constexpr std::uint32_t kCacheLine = 32;
 constexpr std::uint32_t kDma2dIrqPriority = 15;   // may call FromISR APIs (FreeRTOSConfig.h)
 
 SemaphoreHandle_t g_dma2d_done;
+SemaphoreHandle_t g_reload_done;
 volatile std::uint32_t g_dma2d_error;
 } // namespace
+
+// The LTDC applied the register reload (at the vertical blanking): wake present().
+extern "C" void LTDC_IRQHandler(void)
+{
+    BaseType_t woken = pdFALSE;
+    if ((LTDC->ISR & LTDC_ISR_RRIF) != 0) {
+        LTDC->ICR = LTDC_ICR_CRRIF;
+        xSemaphoreGiveFromISR(g_reload_done, &woken);
+    }
+    portYIELD_FROM_ISR(woken);
+}
 
 // The DMA2D transfer ended (or failed): wake the thread that is waiting in clear_rect(), which
 // sleeps meanwhile and leaves the CPU to the logic thread.
@@ -60,6 +72,11 @@ bool Display::init()
     HAL_NVIC_SetPriority(DMA2D_IRQn, kDma2dIrqPriority, 0);
     HAL_NVIC_EnableIRQ(DMA2D_IRQn);
 #endif
+    g_reload_done = xSemaphoreCreateBinary();
+    if (g_reload_done == nullptr)
+        return false;
+    HAL_NVIC_SetPriority(LTDC_IRQn, kDma2dIrqPriority, 0);
+    HAL_NVIC_EnableIRQ(LTDC_IRQn);
     front_ = kFront;
     back_ = kBack;
     return true;
@@ -135,15 +152,25 @@ void Display::present()
     // vertical-blanking reload: the shadow registers (incl. the framebuffer address)
     // are applied at the next vblank, so the flip never tears.
     HAL_LTDC_SetAddress_NoReload(&hlcd_ltdc, back_, 0);
+#ifdef PRISM_RENODE
+    // Renode's LTDC model does not raise the reload interrupt: poll the flag the hardware clears.
     HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING);
-
-    // Wait until the reload has been applied (hardware clears the VBR bit in SRCR),
-    // with a timeout so a stuck LTDC cannot hang the render thread forever.
     const uint32_t deadline = HAL_GetTick() + kReloadTimeoutMs;
     while ((LTDC->SRCR & LTDC_SRCR_VBR) != 0 &&
            static_cast<int32_t>(HAL_GetTick() - deadline) < 0)
     {
     }
+#else
+    LTDC->ICR = LTDC_ICR_CRRIF;
+    LTDC->IER |= LTDC_IER_RRIE;                 // interrupt when the reload is applied
+    xSemaphoreTake(g_reload_done, 0);           // a stale give from a reload that timed out
+    HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING);
+
+    // Sleep until the reload has been applied (the interrupt gives the semaphore): the frame
+    // waits up to a whole refresh here, and the CPU is the logic thread's (or idle) meanwhile.
+    // A timeout, so a stuck LTDC cannot hang the render thread forever.
+    xSemaphoreTake(g_reload_done, pdMS_TO_TICKS(kReloadTimeoutMs));
+#endif
 
     std::swap(front_, back_);
 }
