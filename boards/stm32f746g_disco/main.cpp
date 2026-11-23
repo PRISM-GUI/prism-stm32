@@ -25,9 +25,10 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-// The framebuffers and both heaps live in the SDRAM: map it write-through, cacheable and not
-// shared, so the LTDC reads what the CPU wrote without a cache clean at every flip (and the
-// DMA2D's writes only need the invalidation clear_rect() does). Everything else keeps the
+// The framebuffers and both heaps live in the SDRAM: map it write-back, cacheable and not shared.
+// Not write-through: Cortex-M7 erratum 1259864 (r0p1..r1p1, this board's core is r0p1) lets a
+// load from write-through memory miss the last store to it, which corrupted malloc's heap here.
+// ARM's workaround is write-back; the display then cleans before the LTDC or the DMA2D reads. Everything else keeps the
 // default map: the MPU is enabled with the privileged default region, as in ST's F7 SDRAM
 // example — the F7's FMC registers at 0xA0000000 must stay reachable, which a 4 GB background
 // region would cut off.
@@ -46,7 +47,7 @@ static void MPU_Config(void)
     region.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
     region.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
     region.IsCacheable = MPU_ACCESS_CACHEABLE;
-    region.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    region.IsBufferable = MPU_ACCESS_BUFFERABLE;   // with C=1, TEX=0: write-back, no write-allocate
     HAL_MPU_ConfigRegion(&region);
 
     HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);

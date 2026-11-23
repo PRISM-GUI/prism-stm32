@@ -57,7 +57,7 @@ MEMORY
    the pre-scheduler context run on it, and every interrupt after). */
 _estack = ORIGIN(RAM) + LENGTH(RAM);
 
-/* Both heaps are in the SDRAM, which main.cpp's MPU_Config maps cacheable write-through, so
+/* Both heaps are in the SDRAM, which main.cpp's MPU_Config maps cacheable write-back, so
    they are normal cached memory. SRAM cannot hold them: PRISM's frame runtime alone asks for a
    64 KiB logic thread plus a 48 KiB render thread, and its C++ allocations on top. Nothing that
    DMA reads or writes lives in either heap.

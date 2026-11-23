@@ -232,6 +232,12 @@ bool Display::clear_rect(int x0, int y0, int x1, int y1, std::uint32_t argb)
     const std::uint32_t row_bytes = kWidth * sizeof(std::uint32_t);
     const std::uint32_t first = back_ + static_cast<std::uint32_t>(y0) * row_bytes
                                 + static_cast<std::uint32_t>(x0) * sizeof(std::uint32_t);
+    const std::uint32_t last = first + (h - 1) * row_bytes + w * sizeof(std::uint32_t);
+    const std::uint32_t begin = first & ~(kCacheLine - 1), end = (last + kCacheLine - 1) & ~(kCacheLine - 1);
+    // The SDRAM is write-back (main.cpp, MPU_Config): write the cached pixels of these lines out
+    // before the DMA2D fills them, so neither an older dirty line overwrites its fill later nor
+    // the invalidation below throws away the CPU's pixels at the rectangle's edges.
+    SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t *>(begin), static_cast<int32_t>(end - begin));
     DMA2D->CR = DMA2D_R2M | DMA2D_CR_TCIE | DMA2D_CR_TEIE | DMA2D_CR_CEIE;   // register to memory
     DMA2D->OPFCCR = DMA2D_OUTPUT_ARGB8888;
     DMA2D->OCOLR = argb;
@@ -246,10 +252,8 @@ bool Display::clear_rect(int x0, int y0, int x1, int y1, std::uint32_t argb)
         return false;   // stuck: the CPU clears instead (and the DMA2D is left to finish)
     if (g_dma2d_error != 0)
         return false;
-    // The DMA2D wrote around the cache. The MPU maps SDRAM write-through, so the cache holds no
-    // dirty line: invalidating whole lines, rectangle edges included, loses nothing.
-    const std::uint32_t last = first + (h - 1) * row_bytes + w * sizeof(std::uint32_t);
-    const std::uint32_t begin = first & ~(kCacheLine - 1), end = (last + kCacheLine - 1) & ~(kCacheLine - 1);
+    // The DMA2D wrote around the cache, and these lines were cleaned before it started: dropping
+    // them loses nothing, and the CPU then reads the fill.
     SCB_InvalidateDCache_by_Addr(reinterpret_cast<uint32_t *>(begin), static_cast<int32_t>(end - begin));
     return true;
 #endif
@@ -264,9 +268,8 @@ std::span<std::uint32_t> Display::back()
 void Display::present()
 {
     auto pixels = back();
-    // The MPU maps SDRAM write-through (MPU_Config, main.cpp), so the LTDC sees the writes
-    // without a cache clean and this is redundant — kept anyway: if the MPU setup ever changes
-    // to write-back, a missing clean shows as tearing/stale pixels.
+    // The SDRAM is write-back (MPU_Config, main.cpp): the LTDC reads memory, not the cache, so
+    // the frame's pixels are written out before the flip.
     SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t *>(pixels.data()),
                             static_cast<int32_t>(pixels.size() * sizeof(std::uint32_t)));
 
