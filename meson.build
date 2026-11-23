@@ -24,7 +24,15 @@ prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'te
                                                # {fmt}'s localized formatting drags libstdc++'s
                                                # locale facets in (~184 KiB): affordable in the
                                                # H7's 2 MiB of flash, not in the F7's 1 MiB.
-                                               'fmt_locale=' + (is_f7 ? 'false' : 'true')])
+                                               'fmt_locale=' + (is_f7 ? 'false' : 'true'),
+                                               # libunibreak's UAX #14 + grapheme tables cost
+                                               # ~100 KiB; the F7 uses the table-free rule set
+                                               # of ui/text_segmentation.hpp instead (breaks at
+                                               # spaces, hyphens and CJK ideographs).
+                                               'line_breaking=' + (is_f7 ? 'simple' : 'unicode'),
+                                               # The second embedded face is 20 KiB of bold
+                                               # Noto Sans; off, bold draws with the regular one.
+                                               'embedded_bold_face=' + (is_f7 ? 'false' : 'true')])
 prism_platform_dep = prism.get_variable('prism_platform_dep')
 # The shared board apps (the widget demo and the audio scope) plus CMSIS-DSP for the scope's
 # FFT come from PRISM (examples/embedded/): prism_embedded_apps_dep carries the include

@@ -56,3 +56,15 @@ void vApplicationIdleHook(void)
         BSP_LED_Toggle(LED1);
     }
 }
+
+/* No C++ demangler in this firmware. libstdc++'s default terminate handler (vterminate, which
+   comes in with any throw) demangles the exception's type name to print it, and that one call
+   drags in the whole demangler (cp-demangle.c, ~29 KiB) and its sprintf (which pulls newlib's
+   printf engine and with it the float conversion, so the {fmt} formatting used everywhere else
+   cannot replace it). The board has no console to print that message on: the handler's output
+   goes to stderr, which nothing retargets here. Answering "no name" makes the handler print the
+   mangled name instead, and the demangler, sprintf and printf stay out of the image. */
+char *__cxa_demangle(const char *, char *, size_t *, int *)
+{
+    return nullptr;
+}
