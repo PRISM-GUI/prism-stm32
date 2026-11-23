@@ -99,6 +99,8 @@ if is_f7
   it_file = 'stm32f7xx_it.c'
   timebase_file = 'stm32f7xx_hal_timebase_tim.c'
   ld_name = 'stm32f746g.ld'
+  # The F7 board logs its boot progress and faults on COM1 (see boot_log.h).
+  board_extra_sources = files(board_dir / 'boot_log.cpp')
 else
   # ---- STM32H7B3I-DK ----
   hal_dir = 'third_party' / 'stm32h7xx-hal-driver'
@@ -172,6 +174,7 @@ else
   it_file = 'stm32h7xx_it.c'
   timebase_file = 'stm32h7xx_hal_timebase_tim.c'
   ld_name = 'stm32h7b3.ld'
+  board_extra_sources = []
 endif
 
 # ---- Shared by the boards: HAL, BSP, FreeRTOS, board objects, firmware targets ----
@@ -208,8 +211,7 @@ board_objects = static_library('board_objects', files(
     board_dir / it_file,
     board_dir / timebase_file,
     board_dir / 'freertos_hooks.c',
-    board_dir / 'boot_log.cpp',    # progress + fault report on COM1 from the first line of main
-  ),
+  ) + board_extra_sources,
   include_directories : [board_inc, freertos_board_inc],
   c_args : board_defines,
   cpp_args : board_defines,
