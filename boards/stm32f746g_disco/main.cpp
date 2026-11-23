@@ -192,6 +192,41 @@ static void app_task(void *)
     }
 }
 
+// The whole SDRAM written with a pattern that depends on each word's address, then read back:
+// a dead address line, a bad bank or wrong timings show up as the first mismatch, printed. Runs
+// before anything uses the SDRAM (framebuffers included), so it may overwrite all of it.
+static void sdram_test()
+{
+    auto *const first = reinterpret_cast<volatile std::uint32_t *>(0xC0000000u);
+    constexpr std::uint32_t kWords = 8u * 1024u * 1024u / 4u;
+    const auto pattern = [](std::uint32_t i) { return (i * 0x9E3779B1u) ^ 0xA5A5A5A5u; };
+    for (std::uint32_t i = 0; i < kWords; ++i)
+        first[i] = pattern(i);
+    SCB_CleanInvalidateDCache();   // read back from the chip, not from the cache
+    std::uint32_t bad = 0;
+    for (std::uint32_t i = 0; i < kWords; ++i) {
+        const std::uint32_t got = first[i];
+        if (got == pattern(i)) continue;
+        if (bad == 0) {
+            boot_log("f746: sdram FAIL at ");
+            boot_log_hex(0xC0000000u + 4u * i);
+            boot_log(" wrote ");
+            boot_log_hex(pattern(i));
+            boot_log(" read ");
+            boot_log_hex(got);
+            boot_log("\n");
+        }
+        ++bad;
+    }
+    if (bad == 0) {
+        boot_log("f746: sdram ok (8 MB)\n");
+        return;
+    }
+    boot_log("f746: sdram bad words ");
+    boot_log_hex(bad);
+    boot_log("\n");
+}
+
 extern "C" int main(void)
 {
   /* MPU + caches first (ST's order): the MPU must be configured before any SDRAM access, and
@@ -223,13 +258,7 @@ extern "C" int main(void)
 #ifndef PRISM_RENODE
   if (BSP_SDRAM_Init() != SDRAM_OK) boot_log("f746: sdram init failed\n");
 #endif
-  {
-    volatile std::uint32_t *probe = reinterpret_cast<volatile std::uint32_t *>(0xC07FFFF0u);
-    *probe = 0x5A5AA5A5u;
-    boot_log("f746: sdram ");
-    boot_log_hex(*probe == 0x5A5AA5A5u ? 1u : 0u);
-    boot_log("\n");
-  }
+  sdram_test();
 
   BSP_LED_Init(LED1); /* green, blinks from vApplicationIdleHook */
 
