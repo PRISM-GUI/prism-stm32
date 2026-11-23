@@ -1,0 +1,1 @@
+../../../../stm32f746g-disco-bsp/stm32746g_discovery.h
