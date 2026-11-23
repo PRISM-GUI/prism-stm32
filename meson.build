@@ -223,7 +223,6 @@ board_sources = files(
   board_dir / 'touch.cpp',
   board_dir / 'uart_stream.cpp',
   board_dir / 'adc_source.cpp',
-  board_dir / 'sdram_early.cpp',   # the SDRAM from .preinit_array (real board only)
 )
 # include_directories('.') stays for "app/adc_sample.hpp" (the one app/ file that did not move
 # to PRISM; the H7 board's ADC uses it).

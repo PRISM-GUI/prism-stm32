@@ -179,9 +179,8 @@ extern "C" void DMA2D_IRQHandler(void)
 
 bool Display::init()
 {
-    // The framebuffers are in SDRAM, and the SDRAM is already up: sdram_early.cpp brings the FMC
-    // and the MT48LC4M32B2 up from .preinit_array, before any static constructor and before main
-    // (both heaps live there). Renode maps the SDRAM as plain memory, so nothing to do there.
+    // The framebuffers are in SDRAM, and the SDRAM is already up: main() starts it before the
+    // first task, whose stack comes from heap_4's pool there. Renode maps it as plain memory.
     configure_pixel_clock();
     init_lcd_pins();
     if (!init_ltdc())

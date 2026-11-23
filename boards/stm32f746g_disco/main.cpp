@@ -5,6 +5,7 @@
 // touch.cpp and this clock setup.
 #include "adc_source.hpp"
 #include "boot_log.h"
+#include "stm32746g_discovery_sdram.h"
 #include "display.hpp"
 #include "touch.hpp"
 #include "uart_stream.hpp"
@@ -215,8 +216,13 @@ extern "C" int main(void)
   boot_log("f746: clocks\n");
 #endif
 
-  /* The SDRAM came up in .preinit_array (sdram_early.cpp), before any static constructor and
-     before the heaps it holds were touched: read back one word to prove it. */
+  /* The SDRAM holds both heaps, so it starts before anything allocates: the first task's stack
+     comes from heap_4's pool there. Not earlier than here: the BSP's sequence waits with
+     HAL_Delay, which needs the HAL tick HAL_Init started. Nothing before main allocates (the
+     .init_array entries are PRISM's theme constants and libstdc++ hooks). Renode has no FMC. */
+#ifndef PRISM_RENODE
+  if (BSP_SDRAM_Init() != SDRAM_OK) boot_log("f746: sdram init failed\n");
+#endif
   {
     volatile std::uint32_t *probe = reinterpret_cast<volatile std::uint32_t *>(0xC07FFFF0u);
     *probe = 0x5A5AA5A5u;
