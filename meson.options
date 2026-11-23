@@ -2,3 +2,6 @@ option('alloc_guard', type : 'boolean', value : false,
        description : 'Board firmware: stop (trap) on any heap allocation once startup is done')
 option('example', type : 'combo', choices : ['widgets', 'scope'], value : 'scope',
        description : 'What the board firmware runs: the widget demo or the audio scope')
+option('board', type : 'combo', choices : ['stm32h7b3i_dk', 'stm32f746g_disco'],
+       value : 'stm32h7b3i_dk',
+       description : 'The board to build the firmware for (cross file selects the CPU: cross/stm32h7.ini or cross/stm32f7.ini)')
