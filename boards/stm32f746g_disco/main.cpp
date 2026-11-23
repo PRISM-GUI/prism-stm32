@@ -184,7 +184,8 @@ static void app_task(void *)
     }
     // A touch controller that does not answer leaves the app running without input, so the
     // screen still shows that PRISM runs (this board has a single LED, which the idle hook owns).
-    (void)touch.init();
+    boot_log(touch.init() ? "f746: touch\n" : "f746: no touch\n");
+    boot_log("f746: app\n");
     run_example(display, touch);
     // A FreeRTOS task must not return.
     for (;;)

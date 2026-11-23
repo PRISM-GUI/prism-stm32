@@ -1,12 +1,13 @@
-/* FreeRTOS application hooks for the STM32F746G-DISCO firmware. There is no log channel
-   (the UART is only set up for profiling dumps), so the fault hooks just park; the idle
-   hook blinks the green LED1 so the board shows it is alive even if the screen stays black.
-   This board has a single user LED (PI1). */
+/* FreeRTOS application hooks for the STM32F746G-DISCO firmware. The fault hooks say what
+   happened on the boot log (boot_log.h) and park; the idle hook blinks the green LED1 so the
+   board shows it is alive even if the screen stays black. This board has a single user LED (PI1). */
 #include "stm32f7xx_hal.h"
 #include "stm32746g_discovery.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "boot_log.h"
 
 /* FreeRTOS's own memory pool (heap_4). Every task stack comes from it, and PRISM's frame
    runtime asks for a 64 KiB logic thread and a 48 KiB render thread, which does not fit in the
@@ -20,6 +21,7 @@ uint8_t ucHeap[configTOTAL_HEAP_SIZE] __attribute__((section(".sdram_heap"), ali
 
 void vApplicationMallocFailedHook(void)
 {
+    boot_log("\n!! FreeRTOS heap exhausted\n");
     for (;;)
     {
         __asm volatile ("wfi");
@@ -29,7 +31,9 @@ void vApplicationMallocFailedHook(void)
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
     (void)xTask;
-    (void)pcTaskName;
+    boot_log("\n!! stack overflow in task ");
+    boot_log(pcTaskName);
+    boot_log("\n");
     for (;;)
     {
         __asm volatile ("wfi");
@@ -38,8 +42,11 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 
 void board_assert_fail(const char *file, int line)
 {
-    (void)file;
-    (void)line;
+    boot_log("\n!! assert ");
+    boot_log(file);
+    boot_log(":");
+    boot_log_hex((uint32_t)line);
+    boot_log("\n");
     for (;;)
     {
         __asm volatile ("wfi");

@@ -5,6 +5,9 @@
 
 #include "stm32f7xx.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 namespace {
 
 USART_TypeDef *const kUart = USART1;
@@ -49,7 +52,12 @@ void boot_log_hex(uint32_t value)
 
 void boot_log_fault(uint32_t *frame)
 {
-    boot_log("\n!! fault\ncfsr ");
+    boot_log("\n!! fault");
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+        boot_log(" in task ");
+        boot_log(pcTaskGetName(nullptr));
+    }
+    boot_log("\ncfsr ");
     boot_log_hex(*(volatile uint32_t *)0xE000ED28u);
     boot_log(" hfsr ");
     boot_log_hex(*(volatile uint32_t *)0xE000ED2Cu);

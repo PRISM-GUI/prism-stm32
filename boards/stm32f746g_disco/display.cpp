@@ -1,6 +1,8 @@
 // Display bring-up and page-flip for the STM32F746G-DISCO (see display.hpp).
 #include "display.hpp"
 
+#include "boot_log.h"
+
 #include "rk043fn48h.h"
 #include "stm32746g_discovery.h"
 #include "stm32746g_discovery_sdram.h"
@@ -182,9 +184,15 @@ bool Display::init()
     // The framebuffers are in SDRAM, and the SDRAM is already up: main() starts it before the
     // first task, whose stack comes from heap_4's pool there. Renode maps it as plain memory.
     configure_pixel_clock();
+    boot_log("f746: lcd clock\n");
     init_lcd_pins();
+    boot_log("f746: lcd pins\n");
     if (!init_ltdc())
+    {
+        boot_log("f746: ltdc init failed\n");
         return false;
+    }
+    boot_log("f746: ltdc\n");
 
 #ifdef PRISM_RENODE
     fit_active_width_to_layer();
@@ -203,6 +211,7 @@ bool Display::init()
     HAL_NVIC_EnableIRQ(LTDC_IRQn);
     front_ = kFront;
     back_ = kBack;
+    boot_log("f746: display ready\n");
     return true;
 }
 
