@@ -6,13 +6,22 @@
 # --enable-threads=posix. newlib's <pthread.h> is only declared when _POSIX_THREADS is
 # defined, so the target libraries are built with it; the pthread_* functions themselves
 # come later, from FreeRTOS (FreeRTOS-Plus-POSIX or our own layer).
-# simplify: one library variant (Cortex-M7, double-precision FPU, hard float) instead of
-# xPack's multilib set; add others with --with-multilib-list when another core is targeted.
+# simplify: one library variant per toolchain instead of xPack's multilib set. FPU picks it:
+# fpv5-d16 (double precision, the H7, the default, in ~/opt/arm-gcc-threads) or fpv5-sp-d16
+# (single precision, the F7: FPU=fpv5-sp-d16 PREFIX=~/opt/arm-gcc-threads-sp
+# WORK=~/toolchain-build-sp). Libraries built for the wrong one run double-precision FPU
+# instructions the F7 does not have: an undefined-instruction fault in log10 on the board.
 set -euo pipefail
 
 V=${V:-15.2.0}
 XPACK=${XPACK:-$HOME/opt/arm-gcc}
 PREFIX=${PREFIX:-$HOME/opt/arm-gcc-threads}
+FPU=${FPU:-fpv5-d16}
+case "$FPU" in
+    fpv5-d16) NEWLIB_VARIANT=v7e-m+dp ;;
+    fpv5-sp-d16) NEWLIB_VARIANT=v7e-m+fp ;;
+    *) echo "FPU must be fpv5-d16 or fpv5-sp-d16" >&2; exit 1 ;;
+esac
 WORK=${WORK:-$HOME/toolchain-build}
 # The Coder image has no diffutils: GCC's build needs cmp.
 command -v cmp >/dev/null || export PATH="$(cd "$(dirname "$0")" && pwd)/cmp-shim:$PATH"
@@ -31,7 +40,7 @@ fetch_gcc() {
     (cd gcc-$V && ./contrib/download_prerequisites)
 }
 
-# The xPack tree minus its compiler, with the Cortex-M7 hard-float newlib at the sysroot's root
+# The xPack tree minus its compiler, with the FPU's hard-float newlib at the sysroot's root
 # (a --disable-multilib GCC only looks there).
 prepare_prefix() {
     rm -rf "$PREFIX" && cp -a "$XPACK" "$PREFIX"
@@ -39,7 +48,7 @@ prepare_prefix() {
     rm -f "$PREFIX"/bin/arm-none-eabi-{gcc,g++,c++,cpp,gcov,lto-dump}*
     local lib=$PREFIX/arm-none-eabi/lib
     rm -f "$lib"/libstdc++*.a "$lib"/libsupc++*.a
-    cp -f "$lib"/thumb/v7e-m+dp/hard/*.a "$lib"/thumb/v7e-m+dp/hard/*.o "$lib"/
+    cp -f "$lib"/thumb/$NEWLIB_VARIANT/hard/*.a "$lib"/thumb/$NEWLIB_VARIANT/hard/*.o "$lib"/
 }
 
 build_gcc() {
@@ -50,7 +59,7 @@ build_gcc() {
     ../gcc-$V/configure --target=arm-none-eabi --prefix="$PREFIX" \
         --with-sysroot="$PREFIX/arm-none-eabi" --with-native-system-header-dir=/include \
         --with-build-time-tools="$PREFIX/arm-none-eabi/bin" \
-        --disable-multilib --with-cpu=cortex-m7 --with-fpu=fpv5-d16 --with-float=hard --with-mode=thumb \
+        --disable-multilib --with-cpu=cortex-m7 --with-fpu="$FPU" --with-float=hard --with-mode=thumb \
         --enable-languages=c,c++ --with-newlib --enable-threads=posix --with-specs="$POSIX_SPECS" \
         --disable-shared --disable-nls --disable-libssp --disable-libgomp --disable-libquadmath \
         --disable-libstdcxx-pch \

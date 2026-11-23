@@ -1,0 +1,7 @@
+#!/bin/sh
+# arm-none-eabi-g++ of the single-precision-FPU toolchain (the F7: fpv5-sp-d16), built by
+# build-toolchain.sh with FPU=fpv5-sp-d16 into ~/opt/arm-gcc-threads-sp. Its libraries (newlib,
+# libstdc++, libgcc) are built for that FPU: the H7 toolchain's use double-precision
+# instructions the F7 does not have. Without -pthread, as arm-g++.
+for a; do shift; [ "$a" = -pthread ] || set -- "$@" "$a"; done
+exec "$HOME/opt/arm-gcc-threads-sp/bin/arm-none-eabi-g++" "$@"
