@@ -8,15 +8,16 @@
    Memory map of the STM32F746G-DISCO as used here:
      FLASH     0x08000000  1 MiB   - code, vectors, the load image of .data/.tdata
      SRAM      0x20010000  256 KiB - SRAM1 (240 KiB) + SRAM2 (16 KiB), contiguous:
-                                     .data/.bss, FreeRTOS heap_4, the newlib heap (_sbrk
-                                     grows from `end` to _heap_end), the initial stack at
-                                     the top. The DTCM at 0x20000000 (SRAM2 is behind it
-                                     in the address map) is left out on purpose: the DMA
-                                     cannot reach it, and DMA buffers (the ADC's) must.
-     SDRAM     0xC0000000  8 MiB   - NOT in the linker script: it only exists after
-                                     BSP_SDRAM_Init, so the LTDC framebuffers are plain
-                                     addresses there (0xC0000000 and 0xC0080000,
-                                     480*272*4 = 522240 bytes each; see display.cpp). */
+                                     .data/.bss and the initial stack at the top. The DTCM
+                                     at 0x20000000 (SRAM2 is behind it in the address map) is
+                                     left out on purpose: the DMA cannot reach it, and DMA
+                                     buffers (the ADC's) must.
+     SDRAM     0xC0100000  7 MiB   - brought up by BSP_SDRAM_Init before the app runs (see
+                                     display.cpp), 8 MiB total: the two LTDC framebuffers at
+                                     0xC0000000 and 0xC0080000 (480*272*4 = 522240 bytes
+                                     each) are plain addresses, then this region holds
+                                     heap_4's 1 MiB pool (.sdram_heap) and the newlib C heap
+                                     up to the top of the SDRAM. */
 
 /* The posix layer is referenced weakly by libstdc++ (gthr-posix), so --gc-sections
    would drop it; EXTERN makes every one of these symbols a GC root. */
@@ -47,13 +48,22 @@ MEMORY
 {
     FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 1024K
     RAM   (rwx) : ORIGIN = 0x20010000, LENGTH = 256K    /* SRAM1 + SRAM2 */
+    /* SDRAM above the two framebuffers (0xC0000000..0xC0100000, plain addresses in
+       display.cpp): FreeRTOS's heap_4 pool, then newlib's C heap. */
+    SDRAM (rwx) : ORIGIN = 0xC0100000, LENGTH = 7M
 }
 
-/* Initial stack pointer: top of SRAM. The main stack gets the 16 KiB below it
-   (the startup code and the pre-scheduler context run on it); the newlib heap stops
-   at _heap_end, 16 KiB below that (see PRISM's ports/freertos/sbrk.c). */
+/* Initial stack pointer: top of SRAM. The main stack grows down from it (the startup code and
+   the pre-scheduler context run on it, and every interrupt after). */
 _estack = ORIGIN(RAM) + LENGTH(RAM);
-_heap_end = _estack - 16K;
+
+/* Both heaps are in the SDRAM, which main.cpp's MPU_Config maps cacheable write-through, so
+   they are normal cached memory. SRAM cannot hold them: PRISM's frame runtime alone asks for a
+   64 KiB logic thread plus a 48 KiB render thread, and its C++ allocations on top. Nothing that
+   DMA reads or writes lives in either heap.
+   - .sdram_heap, below, is heap_4's pool (ucHeap, freertos_hooks.c);
+   - the C heap is what PRISM's ports/freertos/sbrk.c grows from `end` up to _heap_end. */
+_heap_end = ORIGIN(SDRAM) + LENGTH(SDRAM);
 
 SECTIONS
 {
@@ -160,7 +170,20 @@ SECTIONS
     } > RAM
 
     . = ALIGN(8);
-    PROVIDE(end = .);   /* newlib's _sbrk (PRISM's ports/freertos/sbrk.c) grows the C heap from here */
+    /* heap_4's pool. NOLOAD: it has no initial contents (heap_4 formats it at the first
+       pvPortMalloc). The C heap starts at the next MiB above it. */
+    .sdram_heap (NOLOAD) :
+    {
+        _sdram_heap_start = .;
+        KEEP(*(.sdram_heap))
+        _sdram_heap_end = .;
+    } > SDRAM
+
+    _heap_start = ALIGN(_sdram_heap_end, 1M);
+
+    /* `end` is where PRISM's _sbrk starts the C heap. It is the SDRAM above the framebuffers
+       and above heap_4's pool, not the end of .bss: see _heap_start above. */
+    PROVIDE(end = _heap_start);
     PROVIDE(_end = .);
 
     /DISCARD/ :

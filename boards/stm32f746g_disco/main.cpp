@@ -23,11 +23,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-// The framebuffers are in SDRAM: map it write-through, cacheable and not shared, so the LTDC
-// reads what the CPU wrote without a cache clean at every flip (and the DMA2D's writes only need
-// the invalidation clear_rect() does). Everything else keeps the default map: the MPU is enabled
-// with the privileged default region, as in ST's F7 SDRAM example — the F7's FMC registers at
-// 0xA0000000 must stay reachable, which a 4 GB background region would cut off.
+// The framebuffers and both heaps live in the SDRAM: map it write-through, cacheable and not
+// shared, so the LTDC reads what the CPU wrote without a cache clean at every flip (and the
+// DMA2D's writes only need the invalidation clear_rect() does). Everything else keeps the
+// default map: the MPU is enabled with the privileged default region, as in ST's F7 SDRAM
+// example — the F7's FMC registers at 0xA0000000 must stay reachable, which a 4 GB background
+// region would cut off.
 static void MPU_Config(void)
 {
     MPU_Region_InitTypeDef region;

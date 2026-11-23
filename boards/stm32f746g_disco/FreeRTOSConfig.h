@@ -16,7 +16,8 @@ extern uint32_t SystemCoreClock;
 #define configTICK_RATE_HZ                      1000
 #define configMAX_PRIORITIES                    5
 #define configMINIMAL_STACK_SIZE                256
-#define configTOTAL_HEAP_SIZE                   (96 * 1024) /* heap_4's own static array: the task stacks; newlib's malloc comes from the linker script's heap window (see stm32f746g.ld) */
+#define configTOTAL_HEAP_SIZE                   (1024 * 1024) /* heap_4's pool: every task stack (PRISM asks for 64 KiB + 48 KiB) and the FreeRTOS objects. configAPPLICATION_ALLOCATED_HEAP puts the array in the SDRAM (ucHeap in freertos_hooks.c, .sdram_heap in stm32f746g.ld); SRAM could not hold it. newlib's malloc is elsewhere again: the SDRAM window after that pool */
+#define configAPPLICATION_ALLOCATED_HEAP        1
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_16_BIT_TICKS                  0
 #define configIDLE_SHOULD_YIELD                 1

@@ -8,6 +8,16 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* FreeRTOS's own memory pool (heap_4). Every task stack comes from it, and PRISM's frame
+   runtime asks for a 64 KiB logic thread and a 48 KiB render thread, which does not fit in the
+   256 KiB of SRAM next to PRISM's statics. configAPPLICATION_ALLOCATED_HEAP moves the array
+   here, and the linker script puts it in the SDRAM above the framebuffers (.sdram_heap) — the
+   SDRAM is mapped cacheable write-through by main.cpp's MPU_Config, and no task stack is
+   touched by DMA. */
+#if ( configAPPLICATION_ALLOCATED_HEAP == 1 )
+uint8_t ucHeap[configTOTAL_HEAP_SIZE] __attribute__((section(".sdram_heap"), aligned(8)));
+#endif
+
 void vApplicationMallocFailedHook(void)
 {
     for (;;)
