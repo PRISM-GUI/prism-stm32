@@ -179,12 +179,9 @@ extern "C" void DMA2D_IRQHandler(void)
 
 bool Display::init()
 {
-    // The framebuffers are in SDRAM: the FMC and the MT48LC4M32B2 come up first. Renode maps the
-    // SDRAM as plain memory and models no FMC, so the sequence is skipped there.
-#ifndef PRISM_RENODE
-    if (BSP_SDRAM_Init() != SDRAM_OK)
-        return false;
-#endif
+    // The framebuffers are in SDRAM, and the SDRAM is already up: sdram_early.cpp brings the FMC
+    // and the MT48LC4M32B2 up from .preinit_array, before any static constructor and before main
+    // (both heaps live there). Renode maps the SDRAM as plain memory, so nothing to do there.
     configure_pixel_clock();
     init_lcd_pins();
     if (!init_ltdc())

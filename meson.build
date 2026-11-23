@@ -208,9 +208,11 @@ board_objects = static_library('board_objects', files(
     board_dir / it_file,
     board_dir / timebase_file,
     board_dir / 'freertos_hooks.c',
+    board_dir / 'boot_log.cpp',    # progress + fault report on COM1 from the first line of main
   ),
   include_directories : [board_inc, freertos_board_inc],
   c_args : board_defines,
+  cpp_args : board_defines,
 )
 
 board_ld = meson.current_source_dir() / board_dir / ld_name
@@ -221,6 +223,7 @@ board_sources = files(
   board_dir / 'touch.cpp',
   board_dir / 'uart_stream.cpp',
   board_dir / 'adc_source.cpp',
+  board_dir / 'sdram_early.cpp',   # the SDRAM from .preinit_array (real board only)
 )
 # include_directories('.') stays for "app/adc_sample.hpp" (the one app/ file that did not move
 # to PRISM; the H7 board's ADC uses it).
