@@ -20,7 +20,11 @@ is_f7 = get_option('board') == 'stm32f746g_disco'
 prism = subproject('prism', default_options : ['prism_debug_tools=disabled', 'tests=disabled',
                                                'profiling=enabled',
                                                'profiling_events=' + (is_f7 ? '128' : '1024'),
-                                               'profiling_threads=' + (is_f7 ? '2' : '6')])
+                                               'profiling_threads=' + (is_f7 ? '2' : '6'),
+                                               # {fmt}'s localized formatting drags libstdc++'s
+                                               # locale facets in (~184 KiB): affordable in the
+                                               # H7's 2 MiB of flash, not in the F7's 1 MiB.
+                                               'fmt_locale=' + (is_f7 ? 'false' : 'true')])
 prism_platform_dep = prism.get_variable('prism_platform_dep')
 # The shared board apps (the widget demo and the audio scope) plus CMSIS-DSP for the scope's
 # FFT come from PRISM (examples/embedded/): prism_embedded_apps_dep carries the include
