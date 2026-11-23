@@ -7,6 +7,8 @@
    panel is polled over I2C3, not interrupt-driven. */
 #include "stm32f7xx_hal.h"
 
+#include "boot_log.h"
+
 /* From boards/stm32f746g_disco/stm32f7xx_hal_timebase_tim.c. */
 extern TIM_HandleTypeDef TimHandle;
 
@@ -15,11 +17,15 @@ void TIM6_DAC_IRQHandler(void)
   HAL_TIM_IRQHandler(&TimHandle);
 }
 
-void HardFault_Handler(void)
+/* A fault on this board means a blank screen unless something says so: hand the stacked frame
+   (MSP or PSP, whichever was in use) to the reporter, which prints the fault registers and the
+   frame on the ST-LINK's virtual COM port at 115200. */
+__attribute__((naked)) void HardFault_Handler(void)
 {
-  /* Park: attach a debugger to inspect the stacked frame. */
-  for (;;)
-  {
-    __asm volatile ("wfi");
-  }
+  __asm volatile(
+      "tst   lr, #4\n"
+      "ite   eq\n"
+      "mrseq r0, msp\n"
+      "mrsne r0, psp\n"
+      "b     boot_log_fault\n");
 }

@@ -20,7 +20,7 @@ UART_HandleTypeDef g_uart;
 
 bool UartStream::init()
 {
-    g_uart.Init.BaudRate = 921600;
+    g_uart.Init.BaudRate = 115200;
     g_uart.Init.WordLength = UART_WORDLENGTH_8B;
     g_uart.Init.StopBits = UART_STOPBITS_1;
     g_uart.Init.Parity = UART_PARITY_NONE;

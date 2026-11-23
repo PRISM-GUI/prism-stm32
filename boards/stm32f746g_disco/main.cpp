@@ -4,6 +4,7 @@
 // stm32f746g_disco_renode.elf (-DPRISM_RENODE) for Renode, which differs in display.cpp,
 // touch.cpp and this clock setup.
 #include "adc_source.hpp"
+#include "boot_log.h"
 #include "display.hpp"
 #include "touch.hpp"
 #include "uart_stream.hpp"
@@ -92,6 +93,9 @@ static void SystemClock_Config(void)
     clk.APB2CLKDivider = RCC_HCLK_DIV2;
     if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_7) != HAL_OK)
         for (;;) { __asm volatile ("wfi"); }
+
+    /* The log UART was set up at the reset clock; APB2 is 108 MHz now. */
+    boot_log_setup(HAL_RCC_GetPCLK2Freq());
 }
 #endif
 
@@ -192,16 +196,34 @@ extern "C" int main(void)
   /* MPU + caches first (ST's order): the MPU must be configured before any SDRAM access, and
      the caches before the C library runs. The CMSIS startup already called SystemInit (FPU on,
      VTOR = flash). */
+  /* First thing: the ST-LINK's virtual COM port at 115200 (APB2 = HSI = 16 MHz here), so a
+     board that stops has told us where. boot_log_setup() is called again after the clock switch. */
+  boot_log_setup(16000000u);
+  boot_log("f746: boot\n");
+
   MPU_Config();
   CPU_CACHE_Enable();
+  boot_log("f746: mpu+cache\n");
 
   /* HAL_Init starts the HAL timebase on TIM6 (FreeRTOS owns SysTick). */
   HAL_Init();
+  boot_log("f746: hal\n");
 
 #ifndef PRISM_RENODE
   /* 216 MHz from the 25 MHz HSE (over-drive). */
   SystemClock_Config();
+  boot_log("f746: clocks\n");
 #endif
+
+  /* The SDRAM came up in .preinit_array (sdram_early.cpp), before any static constructor and
+     before the heaps it holds were touched: read back one word to prove it. */
+  {
+    volatile std::uint32_t *probe = reinterpret_cast<volatile std::uint32_t *>(0xC07FFFF0u);
+    *probe = 0x5A5AA5A5u;
+    boot_log("f746: sdram ");
+    boot_log_hex(*probe == 0x5A5AA5A5u ? 1u : 0u);
+    boot_log("\n");
+  }
 
   BSP_LED_Init(LED1); /* green, blinks from vApplicationIdleHook */
 
@@ -212,6 +234,7 @@ extern "C" int main(void)
   uart.init();
 
   xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: frame_app's pthreads come from the heap */
+  boot_log("f746: tasks\n");
   vTaskStartScheduler();
 
   for (;;)
