@@ -229,16 +229,22 @@ static void sdram_test()
     boot_log("\n");
 }
 
-extern "C" int main(void)
+// Everything the C library and C++ static initialization need, before they run: called from
+// .preinit_array, which __libc_init_array runs after .data/.bss are set up and before any static
+// constructor. Both heaps live in the SDRAM, and code allocates before main -- libstdc++'s
+// emergency exception buffer is a malloc in a static constructor. Allocating from an SDRAM that is
+// not up yet left malloc with a heap it never really wrote, and the board crashed or aborted at
+// the first allocation in main. Hence MPU, caches, HAL tick, clocks and SDRAM all come first:
+// the BSP's SDRAM sequence waits with HAL_Delay, which needs the tick, and the SDRAM wants its
+// real clock (its refresh count is for 108 MHz).
+static void board_early_init()
 {
-  /* MPU + caches first (ST's order): the MPU must be configured before any SDRAM access, and
-     the caches before the C library runs. The CMSIS startup already called SystemInit (FPU on,
-     VTOR = flash). */
   /* First thing: the ST-LINK's virtual COM port at 115200 (APB2 = HSI = 16 MHz here), so a
-     board that stops has told us where. boot_log_setup() is called again after the clock switch. */
+     board that stops has told us where. SystemClock_Config sets it up again for 216 MHz. */
   boot_log_setup(16000000u);
   boot_log("f746: boot\n");
 
+  /* MPU + caches first (ST's order): the MPU must be configured before any SDRAM access. */
   MPU_Config();
   CPU_CACHE_Enable();
   boot_log("f746: mpu+cache\n");
@@ -251,17 +257,17 @@ extern "C" int main(void)
   /* 216 MHz from the 25 MHz HSE (over-drive). */
   SystemClock_Config();
   boot_log("f746: clocks\n");
-#endif
-
-  /* The SDRAM holds both heaps, so it starts before anything allocates: the first task's stack
-     comes from heap_4's pool there. Not earlier than here: the BSP's sequence waits with
-     HAL_Delay, which needs the HAL tick HAL_Init started. Nothing before main allocates (the
-     .init_array entries are PRISM's theme constants and libstdc++ hooks). Renode has no FMC. */
-#ifndef PRISM_RENODE
   if (BSP_SDRAM_Init() != SDRAM_OK) boot_log("f746: sdram init failed\n");
 #endif
-  sdram_test();
+  sdram_test();   /* before anything lives in the SDRAM: it overwrites all of it */
+}
 
+/* The entry itself is a pointer (a function attribute would put the code in the array section). */
+__attribute__((section(".preinit_array"), used)) static void (*const board_early_init_entry)() = board_early_init;
+
+extern "C" int main(void)
+{
+  /* The board is up already (board_early_init, above, from .preinit_array). */
   BSP_LED_Init(LED1); /* green, blinks from vApplicationIdleHook */
 
   /* The key button (PI11, polled as a plain GPIO) triggers the profiling dump, and COM1
