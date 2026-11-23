@@ -1,0 +1,27 @@
+using "platforms/cpus/stm32f746.repl"
+
+// STM32F746G-DISCO over the generic STM32F746 cpu description (platforms/cpus/stm32f746.repl):
+//
+//  - SRAM is 384 KiB there (64 KiB DTCM + 240 KiB SRAM1 + 16 KiB SRAM2), flash 2 MiB: both
+//    cover the board (320 KiB SRAM, 1 MiB flash — the linker script only uses flash's first
+//    MiB and the SRAM1+SRAM2 range at 0x20010000).
+//
+//  - The SDRAM (MT48LC4M32B2 on FMC bank 1) is plain mapped memory at 0xC0000000, which is
+//    where the LTDC framebuffers live. There is no FMC register model, so the emulated build
+//    skips BSP_SDRAM_Init (display.cpp) — the controller has nothing to configure.
+//
+//  - The board's HSE is 25 MHz (only used if the firmware configures clocks; the Renode build
+//    skips SystemClock_Config, so the emulated CPU stays on the reset clock).
+//
+//  - The touch panel: FT5336 on I2C3 (the board's touch bus, PH7/PH8 AF4) at 7-bit address
+//    0x38, reporting the RK043FN48H panel's 480x272. Its interrupt line is PI13 (TS_INT_PIN),
+//    i.e. EXTI line 13 -> EXTI15_10_IRQn. The firmware polls the touch, so the line is not
+//    needed, but wired anyway. With the GUI (run.resc), the mouse on the `showAnalyzer
+//    sysbus.ltdc` window drives this model.
+//    `isRotated` mirrors the real chip, which reports the panel's axes swapped (touch.cpp
+//    swaps them back): with it set, MoveTo x y in a script means panel pixel (x, y).
+touchscreen: Input.FT5336 @ i2c3 0x38
+    MaxX: 480
+    MaxY: 272
+    isRotated: true
+    -> gpioPortI@13

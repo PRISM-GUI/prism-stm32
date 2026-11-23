@@ -1,0 +1,16 @@
+# Run the STM32F746G-DISCO firmware in Renode, with the GUI: the LTDC analyzer window is the
+# board's screen, and the mouse on it drives the FT5336 touchscreen. From the repo root:
+#
+#   renode boards/stm32f746g_disco/renode/run.resc
+#   (or pass another ELF: renode -e '$bin = @path/to.elf' boards/stm32f746g_disco/renode/run.resc)
+#
+$bin ?= @../../../build-local/stm32f746g_disco_renode.elf
+
+mach create "f746"
+machine LoadPlatformDescription @stm32f746g_disco.repl
+sysbus LoadELF $bin
+
+# The "emulator screen": the LTDC reads layer 0's framebuffer from SDRAM (0xC0000000/0xC0080000).
+showAnalyzer sysbus.ltdc
+
+start

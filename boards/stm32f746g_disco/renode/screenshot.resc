@@ -1,0 +1,22 @@
+# Headless check of the same firmware in Renode: run N virtual seconds, save the LTDC
+# framebuffer as a PNG, quit. From the repo root:
+#
+#   renode --disable-gui --console boards/stm32f746g_disco/renode/screenshot.resc
+#   (seconds and output: renode -e '$secs = "10"' -e '$out = "@out.png"' ... )
+#
+$bin ?= @../../../build-local/stm32f746g_disco_renode.elf
+$secs ?= "5"
+
+mach create "f746"
+machine LoadPlatformDescription @stm32f746g_disco.repl
+sysbus LoadELF $bin
+
+emulation RunFor $secs
+
+# Save the frame the LTDC is showing: TakeScreenshot() returns a RawImageData, whose ToPng()
+# gives the PNG as a MemoryStream (Renode 1.17).
+# Renode does not expand $variables inside the python string: the path comes from the
+# environment instead (PRISM_SCREENSHOT, default screenshot.png in Renode's working directory).
+python "import System; p = System.Environment.GetEnvironmentVariable('PRISM_SCREENSHOT') or 'screenshot.png'; System.IO.File.WriteAllBytes(p, monitor.Machine['sysbus.ltdc'].TakeScreenshot().ToPng().ToArray())"
+
+quit
