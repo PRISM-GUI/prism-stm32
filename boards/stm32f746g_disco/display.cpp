@@ -147,18 +147,23 @@ bool init_ltdc()
 
 } // namespace
 
-#ifndef PRISM_RENODE
-// The LTDC applied the register reload (at the vertical blanking): wake present().
+// The LTDC applied the register reload (at the vertical blanking): wake present(). In the
+// emulated build present() polls the reload flag instead (Renode's LTDC does not raise the
+// interrupt), but the NVIC line is enabled there too, so the flag must still be acknowledged:
+// an unhandled LTDC interrupt would land in the startup file's default handler and hang.
 extern "C" void LTDC_IRQHandler(void)
 {
-    BaseType_t woken = pdFALSE;
     if ((LTDC->ISR & LTDC_ISR_RRIF) != 0) {
         LTDC->ICR = LTDC_ICR_CRRIF;
+#ifndef PRISM_RENODE
+        BaseType_t woken = pdFALSE;
         xSemaphoreGiveFromISR(g_reload_done, &woken);
+        portYIELD_FROM_ISR(woken);
+#endif
     }
-    portYIELD_FROM_ISR(woken);
 }
 
+#ifndef PRISM_RENODE
 // The DMA2D transfer ended (or failed): wake the thread that is waiting in clear_rect(), which
 // sleeps meanwhile and leaves the CPU to the logic thread.
 extern "C" void DMA2D_IRQHandler(void)
