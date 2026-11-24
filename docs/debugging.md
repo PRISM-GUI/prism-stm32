@@ -74,6 +74,16 @@ instruction; feed it to the toolchain:
 
 Clear the Thumb bit (the low bit) before the lookup if the address ends in an odd digit.
 
+`prism fault` does the whole report at once, `pc` and `lr` included:
+
+    prism fault build-local/stm32f746g_disco.elf crash.txt
+
+It prints one line per address, with the function and the `file:line`. With no file it reads the
+report from stdin, so the serial log can be piped in. It runs `arm-none-eabi-addr2line` from
+`PATH`, and prints `??` for an address that is not in that ELF — the usual reason is the wrong
+image. `prism` comes from PRISM's `tools/prism-cli/`; its page is
+https://prism-gui.readthedocs.io/en/latest/start/tooling.html
+
 ## Debugging with OpenOCD
 
 Start the server, then talk to it over telnet (4444) or with `-c` commands in one shot:
@@ -131,14 +141,21 @@ and fails on the board.
 
 ## Where the bytes went
 
-After a build, `<board>.size.txt` has `text`, `data` and `bss`. Two scripts turn a linker map into a
-per-object and per-symbol report:
+After a build, `<board>.size.txt` has `text`, `data` and `bss`. Two scripts and `prism size` turn a
+linker map into a report:
 
     cd build-f7 && ninja -t commands stm32f746g_disco.elf | tail -1 > /tmp/link.sh
     sed -i 's|$| -Wl,-S -Wl,--cref -Wl,-Map=/tmp/map.txt|' /tmp/link.sh
     sh /tmp/link.sh
     python3 ../scripts/size-map.py /tmp/map.txt          # bytes per object, grouped
     python3 ../scripts/size-sections.py /tmp/map.txt     # biggest input sections, with who pulls them
+    prism size /tmp/map.txt --top 5                      # flash by origin, then RAM, then the biggest
 
-`-Wl,-S` matters: without it the map lists debug sections and the totals come out several times too
-large.
+`-Wl,-S` matters for the two `size-*.py` scripts: without it the map lists debug sections and their
+totals come out several times too large.
+
+`prism size` reads the map's `Memory Configuration` table instead, so a `.bss` or the heap is
+counted as RAM, never as flash, and on the F746 widgets build its flash total is within a kilobyte
+of the `.bin`. It names the family behind each line (`prism`, `prism:ui`, `app`, `libstdc++`,
+`fonts`, `freertos`, `hal`, …). It comes from PRISM's `tools/prism-cli/`; its page is
+https://prism-gui.readthedocs.io/en/latest/start/tooling.html
