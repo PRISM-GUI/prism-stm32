@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="520" viewBox="0 0 680 520" font-family="system-ui, sans-serif">
+  <rect width="680" height="520" fill="#ffffff"/>
+  <text x="24" y="30" font-size="17" fill="#111">STM32F746G-DISCO memory, as this firmware uses it</text>
+
+  <!-- FLASH: the label sits on the region's top edge -->
+  <text x="20" y="56" font-size="12" fill="#555">0x08000000</text>
+  <rect x="110" y="52" width="330" height="86" fill="#eef3fb" stroke="#41618f" stroke-width="1.5"/>
+  <text x="122" y="76" font-size="14" fill="#111">1 MiB flash</text>
+  <text x="122" y="96" font-size="12" fill="#333">vector table, code, read-only data,</text>
+  <text x="122" y="112" font-size="12" fill="#333">the load image of .data and .tdata</text>
+  <text x="122" y="130" font-size="12" fill="#666">widgets demo 365 KB · scope 524 KB</text>
+
+  <!-- SRAM -->
+  <text x="20" y="160" font-size="12" fill="#555">0x20010000</text>
+  <rect x="110" y="156" width="330" height="86" fill="#eef7ee" stroke="#3f7a3f" stroke-width="1.5"/>
+  <text x="122" y="180" font-size="14" fill="#111">256 KiB SRAM (SRAM1 + SRAM2)</text>
+  <text x="122" y="200" font-size="12" fill="#333">.data, .bss, and the main stack at 0x2004FFFF</text>
+  <text x="122" y="218" font-size="12" fill="#333">DMA buffers live here (the ADC's)</text>
+  <text x="122" y="236" font-size="12" fill="#666">the 64 KiB DTCM at 0x20000000 is unused</text>
+
+  <!-- SDRAM, one label per region start -->
+  <rect x="110" y="258" width="330" height="250" fill="none" stroke="#8a5f2f" stroke-width="1.5"/>
+  <text x="122" y="278" font-size="13" fill="#111">8 MiB SDRAM</text>
+
+  <text x="20" y="290" font-size="12" fill="#555">0xC0000000</text>
+  <rect x="122" y="286" width="306" height="30" fill="#fdf1e3" stroke="#a97844"/>
+  <text x="132" y="306" font-size="12" fill="#111">front framebuffer, 522,240 B</text>
+
+  <text x="20" y="324" font-size="12" fill="#555">0xC0080000</text>
+  <rect x="122" y="320" width="306" height="30" fill="#fdf1e3" stroke="#a97844"/>
+  <text x="132" y="340" font-size="12" fill="#111">back framebuffer, 522,240 B</text>
+
+  <text x="20" y="358" font-size="12" fill="#555">0xC0100000</text>
+  <rect x="122" y="354" width="306" height="52" fill="#f6eefe" stroke="#7a52a8"/>
+  <text x="132" y="374" font-size="12" fill="#111">heap_4 pool, 1 MiB — every task stack</text>
+  <text x="132" y="392" font-size="12" fill="#666">ucHeap, section .sdram_heap</text>
+
+  <text x="20" y="414" font-size="12" fill="#555">0xC0200000</text>
+  <rect x="122" y="410" width="306" height="82" fill="#eef3fb" stroke="#41618f"/>
+  <text x="132" y="430" font-size="12" fill="#111">C heap, 6 MiB — newlib malloc and new</text>
+  <text x="132" y="448" font-size="12" fill="#666">PRISM's _sbrk grows it from `end` to _heap_end</text>
+  <text x="132" y="466" font-size="12" fill="#666">the largest single consumer: the app's data</text>
+
+  <text x="20" y="496" font-size="12" fill="#555">0xC0800000</text>
+
+  <!-- right column: the framebuffer arithmetic, next to the framebuffers -->
+  <text x="452" y="292" font-size="12" fill="#444">each framebuffer:</text>
+  <text x="452" y="310" font-size="12" fill="#444">480 × 272 × 4 = 522,240 B</text>
+
+  <text x="452" y="72" font-size="12" fill="#444">never both heaps in SRAM:</text>
+  <text x="452" y="90" font-size="12" fill="#444">the frame runtime asks for</text>
+  <text x="452" y="108" font-size="12" fill="#444">64 KiB + 48 KiB of stacks</text>
+  <text x="452" y="126" font-size="12" fill="#444">before the app allocates.</text>
+
+  <text x="452" y="176" font-size="12" fill="#444">the SDRAM is mapped</text>
+  <text x="452" y="194" font-size="12" fill="#444">write-back, cacheable</text>
+  <text x="452" y="212" font-size="12" fill="#444">(erratum 1259864), so the</text>
+  <text x="452" y="230" font-size="12" fill="#444">display cleans it first.</text>
+
+  <text x="452" y="380" font-size="12" fill="#444">the boot test writes a</text>
+  <text x="452" y="398" font-size="12" fill="#444">pattern through all 8 MiB</text>
+  <text x="452" y="416" font-size="12" fill="#444">before the app starts.</text>
+</svg>

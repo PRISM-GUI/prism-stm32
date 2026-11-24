@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="560" viewBox="0 0 700 560" font-family="system-ui, sans-serif">
+  <rect width="700" height="560" fill="#ffffff"/>
+  <text x="24" y="30" font-size="17" fill="#111">Boot order on the STM32F746G-DISCO firmware</text>
+
+  <!-- 1 reset -->
+  <rect x="40" y="48" width="300" height="42" fill="#eef3fb" stroke="#41618f" stroke-width="1.5"/>
+  <text x="54" y="74" font-size="13" fill="#111">Reset_Handler (startup_stm32f746xx.s)</text>
+
+  <!-- arrow -->
+  <line x1="190" y1="90" x2="190" y2="112" stroke="#333" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="200" y="106" font-size="12" fill="#444">calls</text>
+
+  <rect x="40" y="112" width="300" height="42" fill="#eef3fb" stroke="#41618f"/>
+  <text x="54" y="138" font-size="13" fill="#111">SystemInit — clocks off, FPU on, vectors</text>
+
+  <line x1="190" y1="154" x2="190" y2="176" stroke="#333" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="200" y="170" font-size="12" fill="#444">then copies .data, zeroes .bss</text>
+
+  <!-- preinit -->
+  <rect x="40" y="176" width="300" height="120" fill="#f6eefe" stroke="#7a52a8" stroke-width="1.5"/>
+  <text x="54" y="198" font-size="14" fill="#111">.preinit_array — board_early_init()</text>
+  <text x="54" y="220" font-size="12" fill="#333">1. boot log on USART1, 16 MHz</text>
+  <text x="54" y="238" font-size="12" fill="#333">2. MPU + caches on</text>
+  <text x="54" y="256" font-size="12" fill="#333">3. HAL_Init, then 216 MHz clocks</text>
+  <text x="54" y="274" font-size="12" fill="#333">4. SDRAM up, then a write/read test</text>
+  <text x="54" y="292" font-size="12" fill="#666">this board file, not ST's SystemInit</text>
+
+  <line x1="190" y1="296" x2="190" y2="318" stroke="#333" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="200" y="312" font-size="12" fill="#444">both heaps are ready now</text>
+
+  <!-- constructors -->
+  <rect x="40" y="318" width="300" height="66" fill="#fdf1e3" stroke="#a97844" stroke-width="1.5"/>
+  <text x="54" y="340" font-size="14" fill="#111">.init_array — C++ constructors</text>
+  <text x="54" y="360" font-size="12" fill="#333">they allocate: libstdc++'s emergency</text>
+  <text x="54" y="378" font-size="12" fill="#333">exception buffer is a malloc here</text>
+
+  <line x1="190" y1="384" x2="190" y2="406" stroke="#333" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="200" y="400" font-size="12" fill="#444">then main()</text>
+
+  <!-- main -->
+  <rect x="40" y="406" width="300" height="66" fill="#eef7ee" stroke="#3f7a3f" stroke-width="1.5"/>
+  <text x="54" y="428" font-size="14" fill="#111">main()</text>
+  <text x="54" y="448" font-size="12" fill="#333">LED and button, COM port, one 32 KiB</text>
+  <text x="54" y="466" font-size="12" fill="#333">task, then vTaskStartScheduler()</text>
+
+  <line x1="190" y1="472" x2="190" y2="494" stroke="#333" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="200" y="488" font-size="12" fill="#444">the scheduler runs it</text>
+
+  <rect x="40" y="494" width="300" height="48" fill="#eef7ee" stroke="#3f7a3f"/>
+  <text x="54" y="516" font-size="13" fill="#111">app task: display init, touch init,</text>
+  <text x="54" y="534" font-size="13" fill="#111">run_example() — frame_app's two threads</text>
+
+  <!-- right column: why it matters -->
+  <text x="404" y="196" font-size="13" fill="#111">Why the SDRAM comes up this early</text>
+  <text x="404" y="218" font-size="12" fill="#444">Both heaps live in the SDRAM: heap_4's</text>
+  <text x="404" y="236" font-size="12" fill="#444">1 MiB pool (.sdram_heap) and newlib's</text>
+  <text x="404" y="254" font-size="12" fill="#444">malloc window above it.</text>
+  <text x="404" y="280" font-size="12" fill="#444">C++ constructors run before main and</text>
+  <text x="404" y="298" font-size="12" fill="#444">allocate. With no SDRAM yet, malloc</text>
+  <text x="404" y="316" font-size="12" fill="#444">kept a heap it never really wrote, and</text>
+  <text x="404" y="334" font-size="12" fill="#444">the screen stayed white.</text>
+  <text x="404" y="362" font-size="12" fill="#666">The SDRAM needs HAL_Delay, so it cannot</text>
+  <text x="404" y="380" font-size="12" fill="#666">be in system_stm32f7xx.c: that runs</text>
+  <text x="404" y="398" font-size="12" fill="#666">before HAL_Init.</text>
+
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500" viewBox="0 0 700 500" font-family="system-ui, sans-serif">
+  <rect width="700" height="500" fill="#ffffff"/>
+  <text x="24" y="30" font-size="17" fill="#111">One frame through frame_app</text>
+
+  <rect x="30" y="48" width="300" height="58" fill="#eef7ee" stroke="#3f7a3f" stroke-width="1.5"/>
+  <text x="44" y="70" font-size="13" fill="#111">logic thread</text>
+  <text x="44" y="90" font-size="12" fill="#333">touch event → widget tree update</text>
+
+  <line x1="100" y1="106" x2="100" y2="128" stroke="#333" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="112" y="122" font-size="12" fill="#444">snapshot: an immutable scene</text>
+
+  <rect x="30" y="128" width="300" height="58" fill="#f6eefe" stroke="#7a52a8" stroke-width="1.5"/>
+  <text x="44" y="150" font-size="13" fill="#111">hand-off to the render thread</text>
+  <text x="44" y="170" font-size="12" fill="#333">mutex and condition variable</text>
+
+  <line x1="100" y1="186" x2="100" y2="208" stroke="#333" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="112" y="202" font-size="12" fill="#444">draw list + damage rectangles</text>
+
+  <rect x="30" y="208" width="300" height="58" fill="#fdf1e3" stroke="#a97844" stroke-width="1.5"/>
+  <text x="44" y="230" font-size="13" fill="#111">DMA2D clears each damaged rectangle</text>
+  <text x="44" y="250" font-size="12" fill="#333">clear_rect() first; the CPU clears in Renode</text>
+
+  <line x1="100" y1="266" x2="100" y2="288" stroke="#333" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="112" y="282" font-size="12" fill="#444">cleared to the background colour</text>
+
+  <rect x="30" y="288" width="300" height="58" fill="#eef3fb" stroke="#41618f" stroke-width="1.5"/>
+  <text x="44" y="310" font-size="13" fill="#111">render thread draws the damaged part</text>
+  <text x="44" y="330" font-size="12" fill="#333">into 480 × 272 of ARGB8888 in SDRAM</text>
+
+  <line x1="100" y1="346" x2="100" y2="368" stroke="#333" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="112" y="362" font-size="12" fill="#444">every cache line of the buffer</text>
+
+  <rect x="30" y="368" width="300" height="58" fill="#f2f2f2" stroke="#666" stroke-width="1.5"/>
+  <text x="44" y="390" font-size="13" fill="#111">clean the data cache</text>
+  <text x="44" y="410" font-size="12" fill="#333">the LTDC reads memory, not the cache</text>
+
+  <line x1="100" y1="426" x2="100" y2="448" stroke="#333" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="112" y="442" font-size="12" fill="#444">the buffer's address</text>
+
+  <rect x="30" y="448" width="300" height="42" fill="#eef7ee" stroke="#3f7a3f" stroke-width="1.5"/>
+  <text x="44" y="474" font-size="13" fill="#111">LTDC picks it up at the next vblank, swap</text>
+
+  <!-- buffer inset -->
+  <text x="380" y="70" font-size="13" fill="#111">Two framebuffers, one shown</text>
+  <rect x="380" y="84" width="270" height="44" fill="#fdf1e3" stroke="#a97844"/>
+  <text x="392" y="104" font-size="12" fill="#111">front, 0xC0000000 — the LTDC scans this</text>
+  <text x="392" y="120" font-size="12" fill="#666">while the render thread draws</text>
+
+  <rect x="380" y="136" width="270" height="44" fill="#fdf1e3" stroke="#a97844" stroke-dasharray="4 3"/>
+  <text x="392" y="156" font-size="12" fill="#111">back, 0xC0080000 — drawn next frame</text>
+  <text x="392" y="172" font-size="12" fill="#666">after the flip they swap roles</text>
+
+  <text x="392" y="212" font-size="12" fill="#444">the flip waits for the reload interrupt</text>
+  <text x="392" y="230" font-size="12" fill="#444">on the board; Renode's LTDC does not</text>
+  <text x="392" y="248" font-size="12" fill="#444">raise it, so the build polls the flag</text>
+
+  <text x="380" y="300" font-size="13" fill="#111">Damage, not the whole screen</text>
+  <text x="380" y="322" font-size="12" fill="#444">The logic thread tracks which rectangles</text>
+  <text x="380" y="340" font-size="12" fill="#444">changed. For each one the render thread</text>
+  <text x="380" y="358" font-size="12" fill="#444">clears it, then draws into it. Two buffers</text>
+  <text x="380" y="376" font-size="12" fill="#444">of history (buffer_age = 2) keep a</text>
+  <text x="380" y="394" font-size="12" fill="#444">rectangle alive long enough to appear</text>
+  <text x="380" y="412" font-size="12" fill="#444">in both.</text>
+
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+</svg>

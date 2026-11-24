@@ -1,204 +1,175 @@
-# PRISM on the STM32H7B3I-DK
+# PRISM on two STM32 boards
 
-A port of [PRISM](https://github.com/jeandet/PRISM) to ST's STM32H7B3I-DK board
-(Cortex-M7 at 280 MHz, 1.4 MB RAM, 16 MB SDRAM, 480x272 touch screen). PRISM is used
-as-is (the subproject `subprojects/prism`): its library, its software rasterizer, its frame
-runtime (`frame_app`), its demo apps (`examples/embedded/`, linked as `prism_embedded_apps_dep`)
-and its FreeRTOS port (the kernel, the POSIX layer, the QEMU test firmwares). This repository
-holds the board: ST's HAL and BSP, the display, the touch, the ADC, the board's
-`FreeRTOSConfig.h` and linker script, and the board-side glue in `app/` (only
-`adc_sample.hpp`, the ADC reading to sample conversion — the widget demo and the audio scope
-themselves are PRISM's, so every board repository builds the same sources).
+This repo builds [PRISM](../PRSIM) — a GUI toolkit that renders its own widgets — as firmware for
+two discovery boards:
 
-## Status
+- **STM32H7B3I-DK** (the original port),
+- **STM32F746G-DISCO**.
 
-1. **Toolchain** (`scripts/build-toolchain.sh`, baked into the development image
-   `docker/Dockerfile`): GCC 15.2 for the Cortex-M7 whose libstdc++ has threads.
-2. **POSIX threads on FreeRTOS** (PRISM's `ports/freertos/`): pthreads, keys, mutexes, condition variables,
-   rwlocks, clocks, sleeps and `thread_local` (native ARM TLS, `__aeabi_read_tp`). The QEMU
-   tests below pass: 12 of 12 before the newlib work, which added two more (malloc under
-   threads, printf from two threads) — 14, now PRISM's `tests/embedded/posix_qemu/`.
-3. **newlib thread-safe** (PRISM's `ports/freertos/newlib_locks.c`, `configUSE_NEWLIB_REENTRANT` in the
-   board's `FreeRTOSConfig.h`): newlib's retargetable locks are ours (FreeRTOS mutexes,
-   created lazily and race-free, no-ops before the scheduler starts), so its no-op
-   `libc_a-lock.o` is never linked; each task's TCB embeds a `struct _reent` and
-   `_impure_ptr` follows the context switch, so `printf` works from any task (`_write`
-   still goes to semihosting).
-4. **PRISM's core runs in QEMU** (PRISM's `tests/embedded/prism_qemu/`): a model with a
-   hand-written `view()`, a `WidgetTree`, `build_snapshot(480, 272, v)` — geometry, draw
-   commands, text; 100 publishes timed; a second thread publishing amid malloc churn.
-5. **A software rasterizer for PRISM snapshots** (now PRISM's `raster/`): a `Canvas` over an
-   ARGB8888 pixel span (the LTDC framebuffer format), embedded TTF fonts as the text measurer
-   (`raster::Fonts`, so layout and drawing agree), and `raster::draw()` painting a
-   `SceneSnapshot`. Tested on the host (`host/`) and in QEMU.
-6. **The STM32H7B3I-DK board** (`boards/stm32h7b3i_dk/`, plus `app/adc_sample.hpp`): ST's HAL + BSP bring-up
-   (SDRAM, LTDC LCD with double buffering in SDRAM, FT5336 touch on I2C4, LED), FreeRTOS
-   with the HAL tick on TIM6, and PRISM's demo apps from `examples/embedded/` run by PRISM's
-   `frame_app` — a logic thread polling
-   touch and routing it through `WidgetTree`'s input path, a render thread rasterizing
-   snapshots into the back buffer and flipping the LTDC layer at vblank. Built as `stm32h7b3i_dk.elf`
-   (+ `stm32h7b3i_dk.bin`, size report) and `stm32h7b3i_dk_renode.elf` for Renode
-   (`boards/stm32h7b3i_dk/renode/`). See "Run it without the board" and "Flash the board"
-   below, and docs/board-bringup.md for the bring-up notes (what was unsure, and why).
-   **Tested in Renode** (boots, draws, two taps on "+1" make the counter read 2) and **running
-   on the real board** (display and touch work; flashed with `st-flash`).
+Both run the same two demos, on the same 480×272 panel, with a touch screen and one analog input.
+The board support code is per board, in `boards/<board>/`; nothing is shared through a HAL
+abstraction layer.
 
-## How it got here
+| | STM32H7B3I-DK | STM32F746G-DISCO |
+|---|---|---|
+| Chip | STM32H7B3LI, Cortex-M7 at 280 MHz | STM32F746NG, Cortex-M7 at 216 MHz |
+| FPU | double precision (`fpv5-d16`) | **single precision only** (`fpv5-sp-d16`) |
+| Flash | 2 MiB | 1 MiB |
+| RAM used | 1 MiB AXI SRAM | 256 KiB of SRAM (SRAM1+SRAM2) |
+| External RAM | 16 MiB SDRAM (IS42S16800J) | 8 MiB SDRAM (MT48LC4M32B2) |
+| Panel | 480×272, LTDC | 480×272, LTDC |
+| Touch | GT911, FT5336 fallback (I2C4) | FT5336 (I2C3) |
+| Analog input | Arduino A0 = PA4 = ADC1 channel 18, 16 bit | Arduino A0 = PA0 = ADC3 channel 0, 12 bit |
+| Serial | USART1 through the ST-LINK (PA9/PA10) | USART1 through the ST-LINK (PA9/PB7) |
+| LEDs / button | blue LED2 blinks, red LED3 = no touch, user button dumps the profile | green LED1 blinks, key button dumps the profile |
+| Widgets demo | 1,025 KB | 365 KB |
+| Scope demo | 1,025 KB | 524 KB |
 
-The first spike found that Arm's prebuilt bare-metal libstdc++ is built with
-`--enable-threads=single`: no `std::mutex`, `std::thread`, and non-atomic `shared_ptr` counts.
-PRISM uses these in 16 core files, and stdexec too. Zephyr's SDK briefly shipped a threaded
-libstdc++ and withdrew it. So this repo builds its own (ESP-IDF does the same for its FreeRTOS
-chips) and provides the `pthread_*` calls from FreeRTOS. Smaller fixes: `scripts/arm-g++` drops
-`-pthread` (Meson's threads dependency adds it); fmt is used header-only. The POSIX layer, the
-rasterizer and the runtime started here and have since moved into PRISM.
+Sizes are `text + data` from `arm-none-eabi-size` on the 2026-11-24 build with the
+single-precision toolchain, after the November 2026 size cuts
+(`.superpowers/size-audit.md` has the measurements and what each cut was worth). The H7 has no
+room problem; the F7 does, which is why its build turns PRISM options off — see
+[Building](#building).
 
-Build (on the Coder workspace, where `subprojects/prism` is a symlink to a PRISM checkout):
+Details per board: [docs/boards.md](docs/boards.md). How to flash, read the serial log and debug:
+[docs/debugging.md](docs/debugging.md).
 
-    scripts/remote.sh 'meson setup build --cross-file cross/stm32h7.ini && ninja -C build'
+## What you need
 
-## Third-party sources
+- Meson (1.5 or newer) and ninja, Python 3, and git.
+- An Arm toolchain **per FPU**: `$HOME/opt/arm-gcc-threads` for the H7 and
+  `$HOME/opt/arm-gcc-threads-sp` for the F7. `cross/stm32h7.ini` and `cross/stm32f7.ini` point at
+  them through `scripts/arm-gcc` / `scripts/arm-gcc-sp`.
+- `st-flash` (stlink tools) to flash, OpenOCD to debug, Renode to run without a board.
+- A submodule checkout: `git submodule update --init --recursive`.
 
-ST's HAL, BSP and component drivers and CMSIS are git submodules in `third_party/`, pinned to
-the commits this firmware is built with (CMSIS-DSP, the scope's FFT, comes with PRISM now, as its
-`cmsis-dsp` subproject; FreeRTOS and stb_truetype come with PRISM, as Meson wraps):
+The toolchains are ordinary GCC builds with POSIX threads enabled, because PRISM's platform layer
+uses pthreads on FreeRTOS. Build them with:
 
-    git clone https://github.com/jeandet/prism-stm32
-    cd prism-stm32
-    git submodule update --init --depth 1
+    scripts/build-toolchain.sh                    # H7: fpv5-d16 → ~/opt/arm-gcc-threads
+    FPU=fpv5-sp-d16 PREFIX=$HOME/opt/arm-gcc-threads-sp \
+        WORK=$HOME/toolchain-build-sp scripts/build-toolchain.sh    # F7
 
-`third_party/st/` is committed as symlinks into those submodules, laid out like STM32CubeH7's
-`Drivers/` tree, because ST's BSP sources include each other by relative path
-(`"../Components/ft5336/ft5336.h"`).
+Each install carries one library variant, built for that FPU (`--disable-multilib`).
 
-## Development image
+**The F7 cannot use the H7's libraries.** They link — both are hard float — and then fault: the
+H7's double maths (log10, formatting a double, …) is compiled to double-precision FPU
+instructions, which the F7's FPU does not have.
 
-`docker/Dockerfile` builds an image with everything above: the threaded arm-none-eabi GCC
-(built from `scripts/build-toolchain.sh`, ~20 min on 16 cores), meson, ninja and GCC 16 for
-the host side, QEMU, openocd and stlink. From the repository root:
+## Building
 
-    podman build -f docker/Dockerfile -t prism-stm32-dev .
-
-It starts from Fedora 44 by default; `--build-arg BASE=<image>` puts it on another Fedora 44
-image (our Coder workspace image, for instance).
-
-The workflow in `.github/workflows/image.yml` publishes it to
-`ghcr.io/jeandet/prism-stm32-dev` (tags `latest` and `arm-YYYYMMDD`) when `docker/` or the
-toolchain script changes: `podman pull ghcr.io/jeandet/prism-stm32-dev:latest`.
-
-## The firmwares
+Everything goes through `scripts/remote.sh`, which syncs the repo to a Coder workspace and runs the
+command there with the toolchains on `PATH`:
 
     scripts/remote.sh 'meson setup build --cross-file cross/stm32h7.ini && ninja -C build'
-    # -> build/stm32h7b3i_dk.elf, build/stm32h7b3i_dk.bin, build/stm32h7b3i_dk.size.txt,
-    #    build/stm32h7b3i_dk_renode.elf
+    scripts/remote.sh 'meson setup build-f7 --cross-file cross/stm32f7.ini \
+        -Dboard=stm32f746g_disco && ninja -C build-f7'
 
-PRISM, cross-compiled, also builds its QEMU test firmwares (mps2-an500) in
-`build/subprojects/prism/tests/embedded/`; `meson test -C build` runs them where
-`qemu-system-arm` is installed.
+With both toolchains installed locally, plain `meson setup` and `ninja` work the same way. The
+cross file, not the board option, selects the CPU instruction set.
 
-## Run it without the board (Renode)
+Meson options of this project:
 
-The same firmware runs in [Renode](https://renode.io) 1.17 (portable build in `~/opt/renode`),
-with an emulated LCD and touchscreen. `boards/stm32h7b3i_dk/renode/stm32h7b3i_dk.repl` is the
-board: Renode's `stm32h7.repl` plus 1 MiB AXI SRAM and the FT5336 touch on I2C4 at 0x38.
+| option | values | default | what it does |
+|---|---|---|---|
+| `board` | `stm32h7b3i_dk`, `stm32f746g_disco` | H7 | which board directory and linker script |
+| `example` | `widgets`, `scope` | `scope` | which demo the firmware runs |
+| `alloc_guard` | `true`, `false` | `false` | trap on any heap allocation after startup |
 
-First copy the firmware from the Coder workspace (it is built there):
+The output is `<board>.elf`, `<board>_renode.elf`, `<board>.bin` and `<board>.size.txt` in the
+build directory. `scripts/fetch-firmware.sh <board> <build-dir>` copies the three images to
+`build-local/`.
 
-    scripts/fetch-firmware.sh          # -> build-local/
+The F7 build also sets PRISM's own options, because 1 MiB of flash needs them:
 
-Then, from `boards/stm32h7b3i_dk/renode/`:
+| PRISM option | F7 | desktop and H7 |
+|---|---|---|
+| `fmt_locale` | `false` — no `{:L}` localized formatting | `true` |
+| `line_breaking` | `simple` — no libunibreak, breaks at spaces and around CJK | `unicode` |
+| `embedded_bold_face` | `false` — bold text uses the regular face | `true` |
+| `profiling_events` / `profiling_threads` | 128 / 2 | 1024 / 6 |
 
-    ~/opt/renode/renode run.resc        # a window is the screen; the mouse is your finger
-    PRISM_SCREENSHOT=/tmp/shot.png ~/opt/renode/renode --disable-gui --console screenshot.resc
-    PRISM_SCREENSHOT=/tmp/tap.png  ~/opt/renode/renode --disable-gui --console tap.resc
+Both cross files also set `b_ndebug = 'true'`, which drops `assert` and PRISM's `#ifndef NDEBUG`
+diagnostics. PRISM's always-on contract checks are explicit `std::abort()` paths, so they stay.
 
-`screenshot.resc` runs 5 emulated seconds and saves the screen; `tap.resc` taps "+1" twice
-through the emulated touch controller (the counter then shows 2); `widgets.resc` taps the
-checkbox and drags the slider (unchecked, volume about 0.86). docs/renode-boot.png,
-docs/renode-tap.png and docs/renode-widgets.png are what they produced with
-`-Dexample=widgets` on 2026-11-20 (the timing line under the widgets changes from run to run).
+**Subproject options are read once, when the build directory is configured.** Changing
+`fmt_locale`, `line_breaking`, `embedded_bold_face` or the profiling sizes in `meson.build` needs a
+fresh directory:
 
-The Renode build (`stm32h7b3i_dk_renode.elf`) is the board firmware built with
-`-DPRISM_RENODE`, which changes one thing: the LTDC active width is narrowed to the layer's 480
-pixels. ST's timings for this panel give a 491-pixel active area around the layer, and
-Renode's LTDC model reads the framebuffer with the active width as its line length (a sheared
-picture otherwise). Everything else, including ST's 280 MHz clock and SMPS setup, runs as on
-the board.
+    rm -rf build-f7 && meson setup build-f7 --cross-file cross/stm32f7.ini -Dboard=stm32f746g_disco
 
-## Flash the board
+`meson setup --reconfigure` and `meson setup --wipe` keep the old values.
 
-The image is raw binary at 0x08000000 (the vector table is the first thing in flash):
+## Flash a board
 
-    scripts/fetch-firmware.sh
-    st-flash --reset write build-local/stm32h7b3i_dk.bin 0x08000000
+The image is raw binary at 0x08000000; the vector table is the first thing in flash.
 
-(I am not sure stlink 1.8's `st-flash` handles the H7B3's flash controller unlock sequence —
-if it refuses, use the OpenOCD alternative:)
+    scripts/fetch-firmware.sh stm32f746g_disco build-f7
+    st-flash --reset write build-local/stm32f746g_disco.bin 0x08000000
 
-    openocd -f interface/stlink.cfg -f target/stm32h7x.cfg \
-        -c "program build-local/stm32h7b3i_dk.elf verify reset exit"
+For the H7 use `stm32h7b3i_dk`. `st-flash` 1.8 may not unlock the H7B3's flash controller; if it
+refuses, OpenOCD programs the ELF instead (see [docs/debugging.md](docs/debugging.md)).
 
-What to expect: LED2 (blue, PG2) blinks ~2 Hz from the idle hook even if the screen stays
-black; LED3 (red) lit means the touch controller did not answer (the screen still runs, without
-input).
+Expected on a healthy board: the screen paints the demo within a second, and the green LED
+(F7) or blue LED2 (H7) blinks about twice a second from the RTOS idle hook. On the H7 a lit red
+LED3 means the touch controller did not answer; the screen still runs, without input.
 
-The firmware runs one of two examples, chosen with the meson option `example`
-(`meson configure build -Dexample=scope` or `widgets`):
+## The demos
 
-- **scope** (the default): a scope on Arduino pin A0 (PA4, ADC1 channel 18), sampled at 16 kHz
-  by TIM3 and the DMA. 0 to 3.3 V maps to -1 to 1, so mid-supply reads 0. The board has no
-  microphones of its own (its MEMS microphones are an add-on board on the audio connector).
-  With nothing wired, A0 floats: touching it shows mains hum. The title says where the samples
-  come from ("A0", or "synthetic": a 200 Hz to 4 kHz sweep, used when the ADC does not start,
-  and always in Renode), the samples received in the last second, their DC level and peak.
-  Left: the last 20 ms; right: the spectrum, 0 to 8 kHz. "freeze" stops the plots, "dB"
-  switches the spectrum's scale, "fit" sets both plots' ranges to the signal now, "gain"
-  scales both. The bottom line, once a second: frames per second, CPU load, the C heap and
-  the RTOS heap in use, then allocations and the time per frame of each stage (the example's
-  update, the snapshot build, the drawing and the flip to the LCD). Those are the numbers to
-  optimize against.
-- **widgets**: the first demo ("PRISM on STM32H7", a counter, "+1", a checkbox, a slider), with
-  the same timing line at the bottom.
+- **widgets**: a counter, a "+1" button, a checkbox and a slider, plus a timing line. The quickest
+  way to check that drawing and touch work.
+- **scope**: a scope on Arduino A0, 16 kHz. Left: the last 20 ms. Right: the spectrum up to 8 kHz.
+  The title says where the samples come from — `A0`, or `synthetic` (a sweep, used when the ADC
+  does not start and always in Renode). Buttons: `freeze`, `dB`, `fit`, `gain`.
 
-`host/build/scope_bench` runs the same scope on the PC and prints the same timing line.
+The bottom line of both demos is PRISM's frame statistics: frames per second, CPU load, heap use,
+allocations per frame, and the time each stage took — update, snapshot, draw, present. Those are
+the numbers to optimize against.
 
-Allocation guard: `meson configure build -Dalloc_guard=true` builds a firmware that stops on
-any heap allocation once startup is done (the first timing line, one second in). With a
-debugger attached it halts in the HardFault handler with the full call stack;
-`prism_allocation_first_violation` holds the address that called malloc (the guard is
-PRISM's, in `ports/freertos/alloc_count.c`; `main.cpp` arms it at the first timing line). Off by default until
-PRISM's frame path is allocation-free (doc/design/allocation-free-frames.md in PRISM).
+## Run it without a board (Renode)
 
-If it does not boot (black screen, no LED blink): connect the debugger **under reset**
-(`openocd ... -c "reset halt"` / `st-flash` with the board held in reset via the NRST pin)
-and check `build/stm32h7b3i_dk.size.txt` — the .bss (FreeRTOS's 384 KiB heap_4 is in it)
-plus the newlib heap must fit the 1 MiB AXI SRAM. The power supply must be **direct SMPS**
-(the build defines `USE_PWR_DIRECT_SMPS_SUPPLY`, as ST's .cproject for this board does): a
-wrong supply mode can lock the chip until a power-on reset. A power cycle (unplug/replug)
-clears it.
+Renode runs the `*_renode.elf` image, which is the board firmware built with `-DPRISM_RENODE`.
+Screenshots come from the emulated LTDC, and the emulated FT5336 takes taps:
 
-## Profiling
+    cd boards/stm32f746g_disco/renode
+    PRISM_SCREENSHOT=/tmp/widgets.png ~/opt/renode/renode --disable-gui --console \
+        -e '$bin = @/path/to/build-f7/stm32f746g_disco_renode.elf' screenshot.resc
 
-The firmware is built with PRISM's profiling on (the PRISM subproject's `profiling=enabled`,
-`profiling_events=1024`, `profiling_threads=6`): the `PRISM_PROFILE_*` marks record into a
-global recorder of 1024 events per thread ring × 6 rings — about 144 KiB of .bss in the 1 MiB
-AXI SRAM, so check `build/stm32h7b3i_dk.size.txt` after a build. The recorder's clock is the
-DWT cycle counter, so timestamps are CPU cycles at 280 MHz.
+`run.resc` opens the GUI, `screenshot.resc` saves the screen after 5 s, `tap.resc` taps "+1" twice
+and saves the counter, `widgets.resc` ticks the checkbox and drags the slider.
 
-Press the **blue user button** (PC13) to dump the recorder over the ST-LINK's virtual COM
-port (USART1 on PA9/PA10, 921600 baud 8N1 — the `/dev/ttyACM0` the host sees). The dump
-pauses the recorder for its duration, so the screen freezes for about **2 s** while
-1024 events × 6 threads drain at 921600 baud.
+What the emulation does **not** give you: caches (writes are visible immediately, so cache bugs stay
+hidden), the FMC/SDRAM controller (plain memory, no timing, so bring-up bugs stay hidden), the
+DMA2D (the emulated F7 clears on the CPU), the ADC (the scope uses the synthetic source), the DWT
+on the F7 platform (its clock does not count, so the scope stays on "measuring…"), and the FPU
+precision rule (double-precision instructions do not fault there — only the board shows that).
 
-Capture it on the host — start `prism-trace` first, then press the button whenever you like
-(it waits for the first byte, then reads until the dump's end chunk arrives, or 5 s of
-silence). `prism-trace` is built with PRISM on the host (`tools/prism-trace/` in a desktop
-build directory); reading a serial port needs PRISM's `io` feature, on by default when Asio is
-found:
+## Board pitfalls worth knowing
 
-    prism-trace /dev/ttyACM0 -o trace.json --baud 921600
+1. **The SDRAM comes up before the C++ constructors.** Both heaps are in SDRAM, and constructors
+   allocate (libstdc++'s emergency exception buffer is a malloc), so the F7 brings the board up
+   from a `.preinit_array` entry, not from `main()`. Otherwise the first malloc uses a heap that
+   never really wrote — the symptom is a white screen.
+2. **The SDRAM is mapped write-back.** Cortex-M7 erratum 1259864 makes write-through unsafe here (a
+   load can miss the last store; it corrupted malloc's heap, see commit `33d8f57`). The display
+   therefore cleans the data cache before the LTDC or the DMA2D reads a buffer, and invalidates it
+   after the DMA2D writes one.
+3. **One toolchain per FPU.** See above: the F7's libraries must be built for `fpv5-sp-d16`.
+4. **`HAL_Delay` needs `HAL_Init`.** ST's SDRAM init waits for the controller, so it cannot run in
+   `SystemInit`; it runs after the clocks, in the same early board code.
 
-The tool's one-line summary also prints the dump's **ticks per second**, which says which
-clock the board recorded with: 280000000 when the DWT cycle counter ran, 1000000 for the
-microsecond fallback (QEMU/Renode, where the DWT does not count). Then open
-<https://ui.perfetto.dev> in a browser and load `trace.json`.
+## Where things are
+
+    boards/stm32h7b3i_dk/     H7 board: main, display, touch, ADC source, UART, linker script, Renode
+    boards/stm32f746g_disco/  F7 board: the same, plus boot_log (serial progress and fault report)
+    app/adc_sample.hpp        raw ADC sample → -1..1, shared by the boards' ADC sources
+    cross/                    the two meson cross files, one per FPU
+    scripts/                  toolchain build, remote build, firmware fetch, size reports
+    docs/                     board notes, debugging notes, diagrams
+    third_party/              ST HAL, CMSIS, BSP components, as submodules
+
+PRISM itself is a subproject (`subprojects/prism.wrap`) with its own repository; this repo only
+carries the board code and the build glue.
+
+Diagrams: [F7 memory map](docs/diagrams/memory-map-f7.svg),
+[boot order](docs/diagrams/boot-sequence.svg), [one frame through frame_app](docs/diagrams/frame-path.svg).

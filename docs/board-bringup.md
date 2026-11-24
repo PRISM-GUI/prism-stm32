@@ -2,7 +2,8 @@
 
 (History: the bring-up notes as written. Since then the runtime, the rasterizer and the POSIX
 layer have moved into PRISM, `app/demo.hpp` became `app/widgets_app.hpp`, and the build takes
-PRISM as a subproject, without `-Dprism_dir`: README.md is current.)
+PRISM as a subproject, without `-Dprism_dir`: README.md is current. The second board,
+the STM32F746G-DISCO, and how its memory map differs: [boards.md](boards.md).)
 
 Work done in `/home/jeandet/Documents/prog/prism-stm32` (no commits; PRSIM untouched).
 No shell in this session — only read/edit/write — so **nothing was built or run here**; the
