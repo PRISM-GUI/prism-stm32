@@ -303,7 +303,20 @@ void Display::present()
     // Sleep until the reload has been applied (the interrupt gives the semaphore): the frame
     // waits up to a whole refresh here, and the CPU is the logic thread's (or idle) meanwhile.
     // A timeout, so a stuck LTDC cannot hang the render thread forever.
-    xSemaphoreTake(g_reload_done, pdMS_TO_TICKS(kReloadTimeoutMs));
+    if (xSemaphoreTake(g_reload_done, pdMS_TO_TICKS(kReloadTimeoutMs)) != pdTRUE)
+    {
+        // The reload interrupt did not come. The request may still be pending, so the address
+        // written above may not be on screen yet; swapping now would leave front_/back_ one
+        // flip out of step with the LTDC and the next frame would be drawn into the buffer being
+        // scanned (two frames visible at once). Wait for the hardware to clear the request, and
+        // say so once: a board that reports this is a board whose flip is running on the poll.
+        static std::uint32_t timeouts = 0;
+        if (timeouts++ == 0)
+            boot_log("f746: ltdc reload timeout, polling\n");
+        while ((LTDC->SRCR & LTDC_SRCR_VBR) != 0)
+        {
+        }
+    }
 #endif
 
     std::swap(front_, back_);
