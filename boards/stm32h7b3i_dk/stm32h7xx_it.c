@@ -3,7 +3,7 @@
    xPortPendSVHandler / xPortSysTickHandler onto those vector names, and the startup
    file's weak aliases give way to the port's definitions. The peripheral interrupts
    this firmware enables are the HAL timebase, TIM6, and the ADC's DMA stream (the audio
-   scope, defined in adc_source.cpp). (LTDC's IRQ wakes present() when the reload is applied (display.cpp);
+   scope, defined in adc_capture.cpp). (LTDC's IRQ wakes present() when the reload is applied (display.cpp);
    the touch panel is polled, not interrupt-driven; I2C4 is polled.) */
 #include "stm32h7xx_hal.h"
 

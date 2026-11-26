@@ -141,7 +141,7 @@
  #include "stm32f7xx_hal_tim.h"
 #endif /* HAL_TIM_MODULE_ENABLED */
 
-/* The audio scope's input: the ADC on Arduino A0 (boards/stm32f746g_disco/adc_source.cpp). */
+/* The audio scope's input: the ADC on Arduino A0 (boards/stm32f746g_disco/adc_capture.cpp). */
 #ifdef HAL_ADC_MODULE_ENABLED
  #include "stm32f7xx_hal_adc.h"
 #endif /* HAL_ADC_MODULE_ENABLED */

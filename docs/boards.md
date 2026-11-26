@@ -1,7 +1,7 @@
 # The two boards
 
-Both boards run the same PRISM build and the same demos. What differs is the silicon, the memory
-map, the drivers, and how much of PRISM fits.
+Both boards run the same PRISM build and the same PRISM example apps. What differs is the
+silicon, the memory map, the drivers, and how much of PRISM fits.
 
 ## Side by side
 
@@ -39,7 +39,8 @@ RTOS heap.
 - `stm32h7b3i_dk.repl` plus `run.resc`, `screenshot.resc`, `tap.resc`, `widgets.resc` in
   `boards/stm32h7b3i_dk/renode/`.
 - The ADC reads Arduino A0 with 16 bits, DMA-driven at 16 kHz, mapped to -1..1 as
-  `(raw - 32768) / 32768`.
+  `(raw - 32768) / 32768`, and registered as PRISM's capture device `A0` (mono f32). The scope app
+  opens it by name.
 
 ## The F7 board
 

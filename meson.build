@@ -226,23 +226,26 @@ board_objects = static_library('board_objects', files(
 )
 
 board_ld = meson.current_source_dir() / board_dir / ld_name
+# The app: PRISM's own examples/embedded/<example>_main.cpp, compiled unchanged (meson option
+# `example`), through the variable PRISM exports for ports.
+example_main = prism.get_variable('prism_embedded_app_mains')[get_option('example')]
 # Per-target sources: these see the target's defines (-DPRISM_RENODE), unlike the board library.
+# entry.c gives the CMSIS startup's call to `main` (third_party, not ours to change) the board's
+# own entry, leaving the app's main() the app's: see boards/<board>/entry.c.
 board_sources = files(
   board_dir / 'main.cpp',
+  board_dir / 'entry.c',
   board_dir / 'display.cpp',
   board_dir / 'touch.cpp',
   board_dir / 'uart_stream.cpp',
-  board_dir / 'adc_source.cpp',
-)
+  board_dir / 'adc_capture.cpp',
+) + example_main
 # include_directories('.') stays for "app/adc_sample.hpp" (the one app/ file that did not move
 # to PRISM; the H7 board's ADC uses it).
 board_incs = [board_inc, freertos_board_inc, include_directories('.')]
-# The example the firmware runs (meson option `example`).
-example_defines = get_option('example') == 'scope' ? ['-DPRISM_EXAMPLE_SCOPE'] : []
-# The allocation guard (meson option `alloc_guard`): main.cpp arms it at the first timing line.
-if get_option('alloc_guard')
-  example_defines += ['-DPRISM_ALLOC_GUARD']
-endif
+# The allocation guard (meson option `alloc_guard`): the port's on_stats arms it at the first
+# timing line, as main.cpp did.
+guard_defines = get_option('alloc_guard') ? ['-DPRISM_ALLOC_GUARD'] : []
 
 # The posix and board objects are linked whole: libstdc++'s gthr-posix references the pthread_*
 # functions weakly, newlib's retargetable locks must be defined before libc.a is scanned, and
@@ -254,21 +257,25 @@ board_firmware_args = {
   'link_with' : [hal_lib, bsp_lib, freertos_board],
   'link_whole' : [posix_board, board_objects],
   'link_depends' : files(board_ld),
-  'link_args' : ['-T', board_ld, prism.get_variable('alloc_count_link_arg')],
+  # --wrap=main: the startup's `bl main` reaches entry.c's __wrap_main, and entry.c calls the
+  # app's main() through __real_main (see boards/<board>/entry.c). CHECK: the CMSIS startup in
+  # the third_party submodules is what calls `main`; nothing else does.
+  'link_args' : ['-T', board_ld, prism.get_variable('alloc_count_link_arg'), '-Wl,--wrap=main'],
   'c_args' : board_defines,
 }
 
 # The firmware for the real board.
 board_firmware = executable(get_option('board') + '.elf', board_sources,
   kwargs : board_firmware_args,
-  cpp_args : board_defines + example_defines,
+  cpp_args : board_defines + guard_defines,
 )
 
 # The same firmware for Renode (-DPRISM_RENODE: the boards' main.cpp skips SystemClock_Config,
-# their display/touch drivers drop the parts Renode does not model).
+# their display/touch drivers drop the parts Renode does not model, and their ADC is not
+# registered — Renode does not emulate it).
 board_firmware_renode = executable(get_option('board') + '_renode.elf', board_sources,
   kwargs : board_firmware_args,
-  cpp_args : board_defines + example_defines + ['-DPRISM_RENODE'],
+  cpp_args : board_defines + guard_defines + ['-DPRISM_RENODE'],
 )
 
 # Flashable image and size report for the real board.

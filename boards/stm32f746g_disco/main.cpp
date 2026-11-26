@@ -1,21 +1,18 @@
-// STM32F746G-DISCO firmware entry point: board bring-up (MPU, caches, HAL, clocks), then one
-// FreeRTOS task that runs a PRISM app through PRISM's frame runtime (frame_app) — a logic thread
-// and a render thread on top of it. Built twice: stm32f746g_disco.elf for the real board, and
-// stm32f746g_disco_renode.elf (-DPRISM_RENODE) for Renode, which differs in display.cpp,
-// touch.cpp and this clock setup.
-#include "adc_source.hpp"
+// STM32F746G-DISCO port: board bring-up (MPU, caches, HAL, clocks), then one FreeRTOS task that
+// registers this board as PRISM's port — the panel and the touch as the port's frame sink and
+// input, the ADC on A0 as a capture device — and runs PRISM's own example main() on it (meson
+// option `example`: examples/embedded/{widgets,scope}_main.cpp, unchanged). Built twice:
+// stm32f746g_disco.elf for the real board, and stm32f746g_disco_renode.elf (-DPRISM_RENODE) for
+// Renode, which differs in display.cpp, touch.cpp, this clock setup and the ADC.
+#include "adc_capture.hpp"
 #include "boot_log.h"
-#include "stm32746g_discovery_sdram.h"
 #include "display.hpp"
 #include "touch.hpp"
 #include "uart_stream.hpp"
 
-#include <embedded/audio_scope.hpp>
-#include <embedded/synthetic_source.hpp>
-#include <embedded/widgets_app.hpp>
-
 #include <prism/platform/alloc_count.hpp>
 #include <prism/platform/frame_app.hpp>
+#include <prism/platform/port.hpp>
 #include <prism/profile/dump.hpp>
 
 #include "stm32746g_discovery.h"
@@ -24,6 +21,12 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include <cstddef>
+#include <functional>
+#include <span>
+#include <string_view>
+#include <utility>
 
 // The framebuffers and both heaps live in the SDRAM: map it write-back, cacheable and not shared.
 // Not write-through: Cortex-M7 erratum 1259864 (r0p1..r1p1, this board's core is r0p1) lets a
@@ -103,10 +106,14 @@ static void SystemClock_Config(void)
 
 // --- Firmware ---
 
-// The profiling dump's transport: COM1 (USART1, the ST-LINK's virtual COM port). The build is
-// profiling-on (meson.build: the prism subproject's profiling=enabled), so the PRISM_PROFILE_*
-// marks record into prism::profile::global() while the app runs.
+// The profiling dump's transport: COM1 (USART1, the ST-LINK's virtual COM port), and the timing
+// line's, below. The build is profiling-on (meson.build: the prism subproject's profiling=enabled),
+// so the PRISM_PROFILE_* marks record into prism::profile::global() while the app runs.
 static UartStream uart;
+
+// For the whole run: the port's run_frames closes over both.
+static Display display;
+static Touch touch;
 
 // The user (key) button dumps the recorder over that port, on the press edge (released ->
 // pressed). Registered as an on_loop hook, so it runs on the logic thread once per loop turn.
@@ -121,59 +128,40 @@ static void dump_on_button()
     was_pressed = pressed;
 }
 
-// The scope's samples: the ADC on Arduino A0, or the generated sweep where it does not start —
-// and always in Renode, which does not emulate the ADC.
-static prism_examples::SampleSource &scope_source()
-{
-    static prism_examples::SyntheticSource synthetic{AdcSource::kSampleRate};
-#ifdef PRISM_RENODE
-    return synthetic;
-#else
-    static AdcSource adc;
-    if (adc.init())
-        return adc;
-    return synthetic;
-#endif
-}
-
-// The allocation guard (meson option `alloc_guard`), armed at the first timing line: startup
-// is over by then. PRISM's runtime arms it itself only when PRISM is built with the define.
-static void arm_allocation_guard([[maybe_unused]] prism::platform::FrameContext &ctx)
+// The port's timing line, over COM1. It runs on the app's thread once a second, so the first line
+// is also the moment the allocation guard (meson option `alloc_guard`) goes on: startup is over
+// by then.
+static void board_stats(std::string_view line)
 {
 #ifdef PRISM_ALLOC_GUARD
-    ctx.on_stats([](std::string_view) { prism_allocation_guard_arm(); });
+    prism_allocation_guard_arm();
 #endif
+    (void)uart.write(std::as_bytes(std::span{line.data(), line.size()}));
+    (void)uart.write(std::as_bytes(std::span{"\r\n", 2}));
 }
 
-// Runs the example this firmware was built with (meson option `example`); returns if it quits.
-static void run_example(Display &display, Touch &touch)
+// What platform::run calls: PRISM's frame runtime over this board's panel and touch, with the
+// default FrameOptions (no before_thread_start, UI scale 1) as this board always ran, plus the one
+// hook an app does not have -- the profile dump when the key button is pressed.
+static void run_board_frames(prism::platform::TreeFactory make_tree,
+                             std::function<void(prism::platform::FrameContext &)> setup)
 {
-    using prism::platform::FrameContext;
-#ifdef PRISM_EXAMPLE_SCOPE
-    static prism_examples::ScopeModel model;
-    static prism_examples::ScopeState state{scope_source()};
-    prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
-        prism_examples::attach_scope(ctx, model, state);
-        arm_allocation_guard(ctx);
-        ctx.on_loop(dump_on_button); /* the key button: dump the profile recorder over COM1 */
-    });
-#else
-    static prism_examples::WidgetsModel model;
-    // PRISM's WidgetsModel titles itself "PRISM"; this board's demo says what it runs on.
-    model.title.set({.value = "PRISM on STM32F7", .heading = true});
-    prism::platform::frame_app(display, touch, model, [](FrameContext &ctx) {
-        prism_examples::attach_widgets(ctx, model);
-        arm_allocation_guard(ctx);
-        ctx.on_loop(dump_on_button); /* the key button: dump the profile recorder over COM1 */
-    });
-#endif
+    prism::platform::run_frames(
+        display, touch, std::move(make_tree),
+        [setup = std::move(setup)](prism::platform::FrameContext &fc) {
+            // The AppContext and the app's setup, then our hook: both must be registered before
+            // setup returns.
+            setup(fc);
+            fc.on_loop(dump_on_button);
+        });
 }
+
+// entry.c reaches this through -Wl,--wrap=main (the CMSIS startup's `bl main`), and the app's
+// main() through __real_main once the port is registered.
+extern "C" int board_app_main(void);
 
 static void app_task(void *)
 {
-    // Static so they live for the whole app.
-    static Display display;
-    static Touch touch;
     if (!display.init())
     {
         // No screen: park here; LED1 still blinks from the idle hook.
@@ -185,8 +173,18 @@ static void app_task(void *)
     // A touch controller that does not answer leaves the app running without input, so the
     // screen still shows that PRISM runs (this board has a single LED, which the idle hook owns).
     boot_log(touch.init() ? "f746: touch\n" : "f746: no touch\n");
+#ifndef PRISM_RENODE
+    // A0 as PRISM's capture device: the scope app opens it by name. Not registered when the ADC
+    // does not start, and the app then shows its synthetic sweep by itself. Renode has no ADC.
+    (void)register_adc_capture();
+#endif
+    prism::platform::set_port({
+        .run_frames = run_board_frames,
+        .on_stats = board_stats,
+    });
     boot_log("f746: app\n");
-    run_example(display, touch);
+    // The app's own main(), on this task and its 32 KiB stack, as it always ran here.
+    (void)board_app_main();
     // A FreeRTOS task must not return.
     for (;;)
     {
@@ -265,7 +263,8 @@ static void board_early_init()
 /* The entry itself is a pointer (a function attribute would put the code in the array section). */
 __attribute__((section(".preinit_array"), used)) static void (*const board_early_init_entry)() = board_early_init;
 
-extern "C" int main(void)
+// The board's C entry: entry.c's __wrap_main calls it (see meson.build's -Wl,--wrap=main).
+extern "C" void board_main(void)
 {
   /* The board is up already (board_early_init, above, from .preinit_array). */
   BSP_LED_Init(LED1); /* green, blinks from vApplicationIdleHook */
@@ -276,7 +275,7 @@ extern "C" int main(void)
   BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_GPIO);
   uart.init();
 
-  xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: frame_app's pthreads come from the heap */
+  xTaskCreate(app_task, "app", 8192, nullptr, 2, nullptr); /* 32 KiB stack: the runtime's pthreads come from the heap */
   boot_log("f746: tasks\n");
   vTaskStartScheduler();
 

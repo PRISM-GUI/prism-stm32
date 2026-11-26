@@ -6,9 +6,9 @@ two discovery boards:
 - **STM32H7B3I-DK** (the original port),
 - **STM32F746G-DISCO**.
 
-Both run the same two demos, on the same 480×272 panel, with a touch screen and one analog input.
-The board support code is per board, in `boards/<board>/`; nothing is shared through a HAL
-abstraction layer.
+Both run PRISM's embedded example apps unchanged (the widget demo and the audio scope), on the
+same 480×272 panel, with a touch screen and one analog input. The board support code is per
+board, in `boards/<board>/`; nothing is shared through a HAL abstraction layer.
 
 | | STM32H7B3I-DK | STM32F746G-DISCO |
 |---|---|---|
@@ -73,7 +73,7 @@ Meson options of this project:
 | option | values | default | what it does |
 |---|---|---|---|
 | `board` | `stm32h7b3i_dk`, `stm32f746g_disco` | H7 | which board directory and linker script |
-| `example` | `widgets`, `scope` | `scope` | which demo the firmware runs |
+| `example` | `widgets`, `scope` | `scope` | which PRISM example the firmware runs |
 | `alloc_guard` | `true`, `false` | `false` | trap on any heap allocation after startup |
 
 The output is `<board>.elf`, `<board>_renode.elf`, `<board>.bin` and `<board>.size.txt` in the
@@ -114,17 +114,24 @@ Expected on a healthy board: the screen paints the demo within a second, and the
 (F7) or blue LED2 (H7) blinks about twice a second from the RTOS idle hook. On the H7 a lit red
 LED3 means the touch controller did not answer; the screen still runs, without input.
 
-## The demos
+## The apps
+
+Both apps are PRISM's, built from the submodule with no change: `examples/embedded/widgets_main.cpp`
+and `examples/embedded/scope_main.cpp` (meson option `example`). A board's `main.cpp` is its port:
+it brings the board up, registers the panel and the touch as PRISM's frame sink and input, registers
+the ADC on A0 as PRISM's capture device, then runs the app's own `main()` on the same FreeRTOS task
+— 32 KiB of stack, as before.
 
 - **widgets**: a counter, a "+1" button, a checkbox and a slider, plus a timing line. The quickest
   way to check that drawing and touch work.
-- **scope**: a scope on Arduino A0, 16 kHz. Left: the last 20 ms. Right: the spectrum up to 8 kHz.
-  The title says where the samples come from — `A0`, or `synthetic` (a sweep, used when the ADC
-  does not start and always in Renode). Buttons: `freeze`, `dB`, `fit`, `gain`.
+- **scope**: a scope on PRISM's `audio::Input`, 16 kHz. Left: the last 20 ms. Right: the spectrum
+  up to 8 kHz. The title says where the samples come from — `A0`, or `synthetic` (a sweep, used when
+  the ADC is not registered and always in Renode). Buttons: `freeze`, `dB`, `fit`, `gain`.
 
-The bottom line of both demos is PRISM's frame statistics: frames per second, CPU load, heap use,
-allocations per frame, and the time each stage took — update, snapshot, draw, present. Those are
-the numbers to optimize against.
+The bottom line of both apps is PRISM's frame statistics: frames per second, CPU load, heap
+use, allocations per frame, and the time each stage took — update, snapshot, draw, present. Those
+are the numbers to optimize against. The port sends that line over COM1, and arms the allocation
+guard (`alloc_guard`) on the first one.
 
 ## Run it without a board (Renode)
 
@@ -157,12 +164,16 @@ precision rule (double-precision instructions do not fault there — only the bo
 3. **One toolchain per FPU.** See above: the F7's libraries must be built for `fpv5-sp-d16`.
 4. **`HAL_Delay` needs `HAL_Init`.** ST's SDRAM init waits for the controller, so it cannot run in
    `SystemInit`; it runs after the clocks, in the same early board code.
+5. **The startup's `main` is the app's.** The CMSIS startup is a submodule and calls `main`, and
+   `main` is now PRISM's example. `-Wl,--wrap=main` sends that call to `boards/<board>/entry.c`:
+   `board_main()` is the board's entry, and `board_app_main()` reaches the app's `main()` once the
+   port is registered.
 
 ## Where things are
 
-    boards/stm32h7b3i_dk/     H7 board: main, display, touch, ADC source, UART, linker script, Renode
+    boards/stm32h7b3i_dk/     H7 board: the port (main.cpp + entry.c), display, touch, ADC capture, UART, linker script, Renode
     boards/stm32f746g_disco/  F7 board: the same, plus boot_log (serial progress and fault report)
-    app/adc_sample.hpp        raw ADC sample → -1..1, shared by the boards' ADC sources
+    app/adc_sample.hpp        raw 16-bit ADC sample → -1..1 (the H7 board's ADC; the F7's is 12-bit)
     cross/                    the two meson cross files, one per FPU
     scripts/                  toolchain build, remote build, firmware fetch, size reports
     docs/                     board notes, debugging notes, diagrams

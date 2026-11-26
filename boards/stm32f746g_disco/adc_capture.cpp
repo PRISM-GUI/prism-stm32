@@ -1,11 +1,23 @@
-#include "adc_source.hpp"
+#include "adc_capture.hpp"
+
+#include <prism/audio/backend.hpp>
+#include <prism/audio/input.hpp>
 
 #include "stm32f7xx_hal.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <memory>
+#include <span>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
 
 namespace {
+
+constexpr int kSampleRate = 16000;
 
 // 256 samples (16 ms) per half: one interrupt per half, as often as the H7 board's audio path.
 constexpr std::size_t kSamplesPerHalf = 256;
@@ -13,12 +25,41 @@ constexpr std::size_t kSamplesPerHalf = 256;
 // invalidating a half before reading it touches nothing else.
 alignas(32) std::array<std::uint16_t, 2 * kSamplesPerHalf> g_raw;
 static_assert(sizeof g_raw % 64 == 0, "each half must be whole cache lines");
-std::array<float, kSamplesPerHalf> g_converted; // used from the DMA interrupt only
+// The converted half, for the open Input, which copies it. Used from the DMA interrupt only.
+std::array<float, kSamplesPerHalf> g_converted;
 
 ADC_HandleTypeDef g_adc{};
 DMA_HandleTypeDef g_dma{};
 TIM_HandleTypeDef g_tim{};
-AdcSource *g_source = nullptr;
+
+// The open Input's callback, called from the DMA interrupt: attach() before the ADC can deliver
+// its first half, detach() on close, which waits for a callback in flight. The seq_cst pair is
+// the handshake RenderGate uses (prism/audio/render_gate.hpp): whichever comes second sees the
+// other, so a callback never runs after its Input is gone.
+// CHECK: PRISM's PushFn runs in this interrupt (priority 15), so it must only copy into its ring.
+class PushGate {
+public:
+    void attach(prism::audio::PushFn *push) { push_.store(push, std::memory_order_seq_cst); }
+    void detach()
+    {
+        push_.store(nullptr, std::memory_order_seq_cst);
+        while (inside_.load(std::memory_order_seq_cst)) std::this_thread::yield();
+    }
+    void call(std::span<const std::byte> block, int frames)
+    {
+        prism::audio::PushFn *const push = push_.load(std::memory_order_seq_cst);
+        if (push == nullptr) return;
+        inside_.store(true, std::memory_order_seq_cst);
+        (*push)(block, frames);
+        inside_.store(false, std::memory_order_seq_cst);
+    }
+
+private:
+    std::atomic<prism::audio::PushFn *> push_{nullptr};
+    std::atomic<bool> inside_{false};
+};
+
+PushGate g_gate;
 
 // 12-bit conversion to [-1, 1): mid-scale is 0, one LSB is 1/2048.
 float adc_to_sample(std::uint16_t raw)
@@ -28,14 +69,12 @@ float adc_to_sample(std::uint16_t raw)
 
 void push_half(std::size_t half)
 {
-    if (g_source == nullptr)
-        return;
     std::uint16_t *raw = g_raw.data() + half * kSamplesPerHalf;
     SCB_InvalidateDCache_by_Addr(reinterpret_cast<std::uint32_t *>(raw),
                                  static_cast<std::int32_t>(kSamplesPerHalf * sizeof *raw));
     for (std::size_t i = 0; i < kSamplesPerHalf; ++i)
         g_converted[i] = adc_to_sample(raw[i]);
-    g_source->push(g_converted);
+    g_gate.call(std::as_bytes(std::span<const float>{g_converted}), int(kSamplesPerHalf));
 }
 
 void configure_pin()
@@ -108,13 +147,13 @@ std::uint32_t tim2_clock()
     return apb1_divided ? 2 * pclk1 : pclk1;
 }
 
-bool configure_trigger(float sample_rate)
+bool configure_trigger()
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
     g_tim.Instance = TIM2;
     g_tim.Init.Prescaler = 0;
     g_tim.Init.CounterMode = TIM_COUNTERMODE_UP;
-    g_tim.Init.Period = std::uint32_t(float(tim2_clock()) / sample_rate + 0.5f) - 1;
+    g_tim.Init.Period = std::uint32_t(float(tim2_clock()) / float(kSampleRate) + 0.5f) - 1;
     g_tim.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     g_tim.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
     if (HAL_TIM_Base_Init(&g_tim) != HAL_OK)
@@ -125,17 +164,68 @@ bool configure_trigger(float sample_rate)
     return HAL_TIMEx_MasterConfigSynchronization(&g_tim, &master) == HAL_OK;
 }
 
+// One open Input: its callback lives here, attached to the gate for its lifetime.
+class AdcStream final : public prism::audio::DeviceStream {
+public:
+    explicit AdcStream(prism::audio::PushFn push) : push_(std::move(push)) { g_gate.attach(&push_); }
+    ~AdcStream() override { g_gate.detach(); }
+    AdcStream(const AdcStream &) = delete;
+    AdcStream &operator=(const AdcStream &) = delete;
+
+    bool lost() const override { return false; }
+
+private:
+    prism::audio::PushFn push_;
+};
+
+class AdcCapture final : public prism::audio::CaptureBackend {
+public:
+    // Starts sampling. Call once.
+    bool start()
+    {
+        configure_pin();
+        if (!configure_dma() || !configure_adc() || !configure_trigger())
+            return false;
+        if (HAL_ADC_Start_DMA(&g_adc, reinterpret_cast<std::uint32_t *>(g_raw.data()), g_raw.size()) != HAL_OK)
+            return false;
+        return HAL_TIM_Base_Start(&g_tim) == HAL_OK;
+    }
+
+    std::vector<prism::audio::DeviceInfo> devices() override
+    {
+        return {prism::audio::DeviceInfo{.id = "adc",
+                                         .name = "A0",
+                                         .rates = {kSampleRate},
+                                         .max_channels = 1,
+                                         .native = prism::audio::SampleType::f32,
+                                         .is_default = true}};
+    }
+
+    std::unique_ptr<prism::audio::DeviceStream> open(std::string_view device,
+                                                     const prism::audio::Format &format,
+                                                     prism::audio::PushFn push) override
+    {
+        // PRISM opens a device it listed, with a format the listing accepts; an empty id is
+        // "the default". One channel, this board's single rate, and the board's own block size
+        // (256 frames): the DMA sets it.
+        if ((!device.empty() && device != "adc") || format.sample_rate != kSampleRate ||
+            format.channels != 1)
+            return nullptr;
+        return std::make_unique<AdcStream>(std::move(push));
+    }
+};
+
 } // namespace
 
-bool AdcSource::init()
+bool register_adc_capture()
 {
-    configure_pin();
-    if (!configure_dma() || !configure_adc() || !configure_trigger(kSampleRate))
-        return false;
-    g_source = this;
-    if (HAL_ADC_Start_DMA(&g_adc, reinterpret_cast<std::uint32_t *>(g_raw.data()), g_raw.size()) != HAL_OK)
-        return false;
-    return HAL_TIM_Base_Start(&g_tim) == HAL_OK;
+    static const bool registered = [] {
+        static AdcCapture capture;
+        if (!capture.start()) return false;
+        prism::audio::register_capture_backend(capture);
+        return true;
+    }();
+    return registered;
 }
 
 extern "C" void DMA2_Stream0_IRQHandler(void) { HAL_DMA_IRQHandler(&g_dma); }
